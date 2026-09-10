@@ -24,10 +24,13 @@ body {
 
 /* 印刷用スタイル */
 @media print {
-  body {
-    background: transparent !important;
+  html, body {
+    background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
   }
   .no-print {
     display: none !important;

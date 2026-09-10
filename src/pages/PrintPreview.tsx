@@ -111,12 +111,41 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
-      {/* 動的印刷スタイル: 選択中の用紙向きに応じた@page sizeを設定 */}
+      {/* 動的印刷スタイル: 選択中の用紙向きに応じた@page sizeを設定し、確実に1枚に収める */}
       <style>{`
         @media print {
           @page {
             size: A4 ${paperOrientation} !important;
+            margin: 0mm !important;
+          }
+          html, body {
+            width: 100% !important;
+            height: 100% !important;
             margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            overflow: hidden !important;
+          }
+          .no-print, header, nav, main, footer {
+            display: none !important;
+          }
+          .print-only {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: ${pageWidth}mm !important;
+            height: ${pageHeight}mm !important;
+            max-width: ${pageWidth}mm !important;
+            max-height: ${pageHeight}mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: #ffffff !important;
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
         }
       `}</style>
@@ -270,8 +299,8 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
         </div>
       )}
 
-      {/* A4 シートプレビュー領域 */}
-      <main className="flex-1 overflow-auto p-4 flex items-center justify-center">
+      {/* A4 シートプレビュー領域 (画面表示専用) */}
+      <main className="flex-1 overflow-auto p-4 flex items-center justify-center no-print">
         {/* A4比率 (縦 210:297 または 横 297:210) の用紙コンテナ */}
         <div
           id="print-sheet"
