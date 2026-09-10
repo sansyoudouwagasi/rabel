@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 import { TEMPLATES } from '../templates/templates';
+import { toVerticalText } from '../utils/textDirection';
 
 interface EditorProps {
   initialSize: LabelSize;
@@ -63,7 +64,7 @@ export const Editor: React.FC<EditorProps> = ({
   const [selectedObject, setSelectedObject] = useState<fabric.FabricObject | null>(null);
 
   // 下部パネル・モーダル状態
-  const [activeBottomPanel, setActiveBottomPanel] = useState<'none' | 'shape_menu' | 'bg'>('none');
+  const [activeBottomPanel, setActiveBottomPanel] = useState<'none' | 'text_menu' | 'shape_menu' | 'bg'>('none');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -100,7 +101,7 @@ export const Editor: React.FC<EditorProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || isHistoryProcessing.current) return;
 
-    const json = JSON.stringify(canvas.toJSON());
+    const json = JSON.stringify(canvas.toObject(['isVertical', 'rawText']));
     // 直前の状態と同じなら保存しない
     if (historyIndex.current >= 0 && historyStack.current[historyIndex.current] === json) {
       return;
@@ -142,7 +143,7 @@ export const Editor: React.FC<EditorProps> = ({
           createdAt: existingLabel?.createdAt || now,
           updatedAt: now,
           backgroundColor: backgroundColor,
-          canvasJson: JSON.stringify(canvas.toJSON()),
+          canvasJson: JSON.stringify(canvas.toObject(['isVertical', 'rawText'])),
           thumbnailUrl,
         };
 
@@ -236,6 +237,8 @@ export const Editor: React.FC<EditorProps> = ({
           originX: 'center',
           originY: 'center',
         });
+        (text as unknown as { isVertical?: boolean; rawText?: string }).isVertical = false;
+        (text as unknown as { isVertical?: boolean; rawText?: string }).rawText = 'テキスト';
         canvas.add(text);
         canvas.setActiveObject(text);
         canvas.renderAll();
@@ -245,27 +248,36 @@ export const Editor: React.FC<EditorProps> = ({
     [existingLabel, selectedTemplate, pushHistory]
   );
 
-  // テキスト追加
-  const handleAddText = () => {
+  // テキスト追加 (横書き / 縦書き)
+  const handleAddText = (isVertical: boolean = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const width = canvas.width || 300;
     const height = canvas.height || 200;
 
-    const text = new fabric.IText('テキスト', {
+    const defaultRawText = isVertical ? '縦書き' : 'テキスト';
+    const displayText = isVertical ? toVerticalText(defaultRawText) : defaultRawText;
+
+    const text = new fabric.IText(displayText, {
       left: width / 2,
       top: height / 2,
       fontSize: Math.round(height * 0.14) || 36,
       fill: '#1e293b',
       originX: 'center',
       originY: 'center',
+      textAlign: isVertical ? 'center' : 'left',
+      lineHeight: isVertical ? 1.05 : 1.16,
     });
+
+    (text as unknown as { isVertical?: boolean; rawText?: string }).isVertical = isVertical;
+    (text as unknown as { isVertical?: boolean; rawText?: string }).rawText = defaultRawText;
 
     canvas.add(text);
     canvas.setActiveObject(text);
     canvas.renderAll();
     setSelectedObject(text);
+    setActiveBottomPanel('none');
     handleObjectModified();
   };
 
@@ -551,7 +563,7 @@ export const Editor: React.FC<EditorProps> = ({
                     createdAt: existingLabel?.createdAt || now,
                     updatedAt: now,
                     backgroundColor,
-                    canvasJson: JSON.stringify(canvas?.toJSON() || {}),
+                    canvasJson: JSON.stringify(canvas?.toObject(['isVertical', 'rawText']) || {}),
                     thumbnailUrl: thumb,
                   });
                 }}
@@ -694,6 +706,41 @@ export const Editor: React.FC<EditorProps> = ({
           />
         )}
 
+        {/* 文字種別選択サブポップアップ */}
+        {activeBottomPanel === 'text_menu' && (
+          <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-around animate-in slide-in-from-bottom-2 duration-150">
+            <button
+              type="button"
+              onClick={() => handleAddText(false)}
+              className="flex flex-col items-center gap-1 p-2 rounded-xl text-slate-700 hover:bg-slate-50 flex-1"
+            >
+              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+                <Type className="w-5 h-5 text-slate-800" />
+              </div>
+              <span className="text-[11px] font-bold">横書きテキスト</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAddText(true)}
+              className="flex flex-col items-center gap-1 p-2 rounded-xl text-slate-700 hover:bg-slate-50 flex-1"
+            >
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <span className="font-extrabold text-sm text-blue-700 leading-none">
+                  縦
+                </span>
+              </div>
+              <span className="text-[11px] font-bold">縦書きテキスト</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveBottomPanel('none')}
+              className="p-2 text-slate-400 hover:text-slate-600 rounded-xl"
+            >
+              <ChevronDown className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+
         {/* 図形選択サブポップアップ */}
         {activeBottomPanel === 'shape_menu' && (
           <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-around animate-in slide-in-from-bottom-2 duration-150">
@@ -738,10 +785,14 @@ export const Editor: React.FC<EditorProps> = ({
           {/* 文字 */}
           <button
             type="button"
-            onClick={handleAddText}
-            className="flex flex-col items-center justify-center p-1.5 rounded-2xl text-slate-700 hover:text-blue-600 hover:bg-blue-50/50 min-h-[50px] min-w-[56px] active:scale-95"
+            onClick={() =>
+              setActiveBottomPanel(activeBottomPanel === 'text_menu' ? 'none' : 'text_menu')
+            }
+            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl text-slate-700 hover:text-blue-600 hover:bg-blue-50/50 min-h-[50px] min-w-[56px] active:scale-95 transition-colors ${
+              activeBottomPanel === 'text_menu' ? 'bg-blue-50 text-blue-600' : ''
+            }`}
           >
-            <Type className="w-5 h-5 text-slate-700" />
+            <Type className="w-5 h-5" />
             <span className="text-[11px] font-bold mt-0.5">文字</span>
           </button>
 

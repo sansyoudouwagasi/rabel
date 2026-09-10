@@ -1,6 +1,7 @@
 import React from 'react';
 import * as fabric from 'fabric';
 import { Bold, AlignLeft, AlignCenter, AlignRight, Plus, Minus, Palette } from 'lucide-react';
+import { toVerticalText, toHorizontalText } from '../../utils/textDirection';
 
 interface TextPropertyPanelProps {
   textObject: fabric.IText;
@@ -21,15 +22,51 @@ export const TextPropertyPanel: React.FC<TextPropertyPanelProps> = ({
   textObject,
   onUpdate,
 }) => {
-  const currentText = textObject.text || '';
+  const isVertical = Boolean((textObject as unknown as { isVertical?: boolean }).isVertical);
+
+  // rawText（ユーザーが入力した生のテキスト）を取得
+  const rawText =
+    (textObject as unknown as { rawText?: string }).rawText ??
+    (isVertical ? toHorizontalText(textObject.text || '') : textObject.text || '');
+
   const currentFontSize = Math.round(textObject.fontSize || 36);
   const isBold = textObject.fontWeight === 'bold';
   const currentAlign = textObject.textAlign || 'left';
   const currentColor = (textObject.fill as string) || '#1e293b';
   const currentFontFamily = textObject.fontFamily || 'sans-serif';
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    textObject.set('text', e.target.value);
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    const newRaw = e.target.value;
+    (textObject as unknown as { rawText?: string }).rawText = newRaw;
+
+    if (isVertical) {
+      textObject.set('text', toVerticalText(newRaw));
+    } else {
+      textObject.set('text', newRaw);
+    }
+    onUpdate();
+  };
+
+  const handleToggleDirection = (direction: 'horizontal' | 'vertical') => {
+    const wantVertical = direction === 'vertical';
+    if (wantVertical === isVertical) return;
+
+    (textObject as unknown as { isVertical?: boolean }).isVertical = wantVertical;
+    (textObject as unknown as { rawText?: string }).rawText = rawText;
+
+    if (wantVertical) {
+      textObject.set({
+        text: toVerticalText(rawText),
+        textAlign: 'center',
+        lineHeight: 1.05,
+      });
+    } else {
+      textObject.set({
+        text: rawText,
+        textAlign: 'left',
+        lineHeight: 1.16,
+      });
+    }
     onUpdate();
   };
 
@@ -61,17 +98,45 @@ export const TextPropertyPanel: React.FC<TextPropertyPanelProps> = ({
 
   return (
     <div className="bg-white p-3 border-t border-slate-200 space-y-3">
-      {/* 文字内容入力 */}
+      {/* 文字内容入力 & 書字方向切り替え */}
       <div>
-        <label className="block text-[11px] font-bold text-slate-500 mb-1">
-          文字内容
-        </label>
-        <input
-          type="text"
-          value={currentText}
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-[11px] font-bold text-slate-500">
+            文字内容
+          </label>
+          {/* 書字方向トグル */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px]">
+            <button
+              type="button"
+              onClick={() => handleToggleDirection('horizontal')}
+              className={`px-2.5 py-1 rounded-md font-bold transition-all ${
+                !isVertical
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              横書き
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleDirection('vertical')}
+              className={`px-2.5 py-1 rounded-md font-bold transition-all ${
+                isVertical
+                  ? 'bg-white text-blue-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              縦書き
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          rows={isVertical ? 2 : 1}
+          value={rawText}
           onChange={handleTextChange}
-          className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-          placeholder="文字を入力"
+          className="w-full min-h-[40px] px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 resize-none"
+          placeholder={isVertical ? '縦書き文字を入力 (改行で複数列)' : '文字を入力'}
         />
       </div>
 
