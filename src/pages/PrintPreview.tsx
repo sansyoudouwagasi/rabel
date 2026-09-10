@@ -10,8 +10,8 @@ interface PrintPreviewProps {
 }
 
 export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => {
-  // ラベルが幅210mmを超える場合はデフォルトを横向きにする
-  const initialOrientation = label.width > 210 ? 'landscape' : 'portrait';
+  // ラベル作成時の用紙向き設定、またはラベル幅が210mmを超える場合は横向きを初期値にする
+  const initialOrientation = label.paperOrientation || (label.width > 210 ? 'landscape' : 'portrait');
   const [paperOrientation, setPaperOrientation] = useState<'portrait' | 'landscape'>(initialOrientation);
 
   const pageWidth = paperOrientation === 'landscape' ? 297 : 210;

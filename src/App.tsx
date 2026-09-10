@@ -63,13 +63,22 @@ export const App: React.FC = () => {
   // 既存ラベルの編集開始
   const handleEditLabel = (label: SavedLabel) => {
     setEditingLabel({
-      size: { width: label.width, height: label.height, name: `${label.width}×${label.height}mm` },
+      size: {
+        width: label.width,
+        height: label.height,
+        name: `${label.width}×${label.height}mm`,
+        paperOrientation: label.paperOrientation,
+      },
       savedLabel: label,
     });
     setViewState({
       type: 'editor',
       labelId: label.id,
-      initialSize: { width: label.width, height: label.height },
+      initialSize: {
+        width: label.width,
+        height: label.height,
+        paperOrientation: label.paperOrientation,
+      },
     });
   };
 
@@ -127,7 +136,11 @@ export const App: React.FC = () => {
             onOpenPrint={handleOpenPrint}
             onSaved={(saved) => {
               setEditingLabel({
-                size: { width: saved.width, height: saved.height },
+                size: {
+                  width: saved.width,
+                  height: saved.height,
+                  paperOrientation: saved.paperOrientation,
+                },
                 savedLabel: saved,
               });
             }}

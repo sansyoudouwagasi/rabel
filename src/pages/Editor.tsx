@@ -145,6 +145,7 @@ export const Editor: React.FC<EditorProps> = ({
           backgroundColor: backgroundColor,
           canvasJson: JSON.stringify(canvas.toObject(['isVertical', 'rawText'])),
           thumbnailUrl,
+          paperOrientation: existingLabel?.paperOrientation || initialSize.paperOrientation,
         };
 
         await saveLabel(data);
@@ -565,6 +566,7 @@ export const Editor: React.FC<EditorProps> = ({
                     backgroundColor,
                     canvasJson: JSON.stringify(canvas?.toObject(['isVertical', 'rawText']) || {}),
                     thumbnailUrl: thumb,
+                    paperOrientation: existingLabel?.paperOrientation || initialSize.paperOrientation,
                   });
                 }}
                 className="h-9 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95"
