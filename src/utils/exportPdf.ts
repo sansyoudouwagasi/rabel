@@ -9,6 +9,7 @@ export interface SheetLayoutOptions {
   marginLeftMm: number;
   gapXMm: number;
   gapYMm: number;
+  paperOrientation?: 'portrait' | 'landscape';
 }
 
 /**
@@ -32,15 +33,19 @@ export async function exportSingleLabelPdf(
 }
 
 /**
- * A4用紙 (210×297mm) に面付けしたPDFを書き出し
+ * A4用紙 (縦: 210×297mm / 横: 297×210mm) に面付けしたPDFを書き出し
  */
 export async function exportA4SheetPdf(
   imgDataUrl: string,
   options: SheetLayoutOptions,
   filename: string = 'label-sheet-a4.pdf'
 ): Promise<void> {
+  const isLandscape = options.paperOrientation === 'landscape';
+  const pageWidth = isLandscape ? 297 : 210;
+  const pageHeight = isLandscape ? 210 : 297;
+
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: isLandscape ? 'landscape' : 'portrait',
     unit: 'mm',
     format: 'a4',
   });
@@ -61,8 +66,8 @@ export async function exportA4SheetPdf(
       const x = marginLeftMm + c * (labelWidthMm + gapXMm);
       const y = marginTopMm + r * (labelHeightMm + gapYMm);
 
-      // A4用紙の範囲内かチェック (210 x 297mm)
-      if (x + labelWidthMm <= 210 && y + labelHeightMm <= 297) {
+      // A4用紙の範囲内かチェック (わずかな丸め誤差を許容)
+      if (x + labelWidthMm <= pageWidth + 0.1 && y + labelHeightMm <= pageHeight + 0.1) {
         doc.addImage(imgDataUrl, 'PNG', x, y, labelWidthMm, labelHeightMm);
       }
     }

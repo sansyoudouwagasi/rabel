@@ -29,7 +29,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
       const w = parseFloat(customWidth);
       const h = parseFloat(customHeight);
 
-      if (isNaN(w) || isNaN(h) || w < 10 || w > 210 || h < 10 || h > 297) {
+      if (isNaN(w) || isNaN(h) || w < 10 || w > 297 || h < 10 || h > 297) {
         setErrorMessage('ラベルサイズを正しく入力してください (幅・高さ: 10〜297mm)');
         return;
       }
@@ -150,7 +150,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
                   <input
                     type="number"
                     min="10"
-                    max="210"
+                    max="297"
                     value={customWidth}
                     onChange={(e) => setCustomWidth(e.target.value)}
                     className="w-full h-11 px-3 bg-white border border-slate-300 rounded-xl text-center font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 text-base"

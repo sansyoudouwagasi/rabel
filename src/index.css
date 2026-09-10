@@ -36,7 +36,7 @@ body {
     display: block !important;
   }
   @page {
-    size: A4 portrait;
+    size: auto;
     margin: 0;
   }
 }

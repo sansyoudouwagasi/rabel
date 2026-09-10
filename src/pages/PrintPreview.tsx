@@ -10,18 +10,35 @@ interface PrintPreviewProps {
 }
 
 export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => {
-  // A4 用紙 (210 × 297 mm) の自動面付け初期値を算出
-  const defaultCols = Math.max(1, Math.floor((210 - 20) / label.width));
-  const defaultRows = Math.max(1, Math.floor((297 - 20) / label.height));
+  // ラベルが幅210mmを超える場合はデフォルトを横向きにする
+  const initialOrientation = label.width > 210 ? 'landscape' : 'portrait';
+  const [paperOrientation, setPaperOrientation] = useState<'portrait' | 'landscape'>(initialOrientation);
 
-  const [cols, setCols] = useState(defaultCols);
-  const [rows, setRows] = useState(defaultRows);
+  const pageWidth = paperOrientation === 'landscape' ? 297 : 210;
+  const pageHeight = paperOrientation === 'landscape' ? 210 : 297;
+
+  // 用紙サイズに応じた自動面付け初期値を算出する関数
+  const calcDefaultCols = (pw: number) => Math.max(1, Math.floor((pw - 20) / label.width));
+  const calcDefaultRows = (ph: number) => Math.max(1, Math.floor((ph - 20) / label.height));
+
+  const [cols, setCols] = useState(() => calcDefaultCols(pageWidth));
+  const [rows, setRows] = useState(() => calcDefaultRows(pageHeight));
   const [marginTop, setMarginTop] = useState(10);
   const [marginLeft, setMarginLeft] = useState(10);
   const [gapX, setGapX] = useState(2);
   const [gapY, setGapY] = useState(2);
   const [showSettings, setShowSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // 用紙の向きを切り替えたときの処理
+  const handleOrientationChange = (newOrientation: 'portrait' | 'landscape') => {
+    if (newOrientation === paperOrientation) return;
+    setPaperOrientation(newOrientation);
+    const newPw = newOrientation === 'landscape' ? 297 : 210;
+    const newPh = newOrientation === 'landscape' ? 210 : 297;
+    setCols(calcDefaultCols(newPw));
+    setRows(calcDefaultRows(newPh));
+  };
 
   const totalCount = cols * rows;
 
@@ -35,8 +52,9 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
       marginLeftMm: marginLeft,
       gapXMm: gapX,
       gapYMm: gapY,
+      paperOrientation,
     }),
-    [label.width, label.height, cols, rows, marginTop, marginLeft, gapX, gapY]
+    [label.width, label.height, cols, rows, marginTop, marginLeft, gapX, gapY, paperOrientation]
   );
 
   // ブラウザ印刷実行
@@ -49,10 +67,11 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
     if (!label.thumbnailUrl) return;
     setIsExporting(true);
     try {
+      const orientationSuffix = paperOrientation === 'landscape' ? 'A4横シート' : 'A4縦シート';
       await exportA4SheetPdf(
         label.thumbnailUrl,
         layoutOptions,
-        `${label.name}_A4シート.pdf`
+        `${label.name}_${orientationSuffix}.pdf`
       );
     } catch (err) {
       console.error('PDF export failed', err);
@@ -92,6 +111,16 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
+      {/* 動的印刷スタイル: 選択中の用紙向きに応じた@page sizeを設定 */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 ${paperOrientation} !important;
+            margin: 0 !important;
+          }
+        }
+      `}</style>
+
       {/* 画面ヘッダー (印刷時は非表示) */}
       <div className="no-print">
         <Header
@@ -119,10 +148,43 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
       {showSettings && (
         <div className="no-print bg-white border-b border-slate-200 px-4 py-3 shadow-md max-w-md mx-auto w-full space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700">A4面付け設定</span>
+            <span className="text-xs font-bold text-slate-700">
+              A4面付け設定 ({paperOrientation === 'landscape' ? '横向き' : '縦向き'})
+            </span>
             <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
               合計 {totalCount} 枚配置
             </span>
+          </div>
+
+          {/* 用紙の向き切り替え */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
+              用紙の向き
+            </label>
+            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => handleOrientationChange('portrait')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  paperOrientation === 'portrait'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                縦向き (210×297mm)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOrientationChange('landscape')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                  paperOrientation === 'landscape'
+                    ? 'bg-white text-blue-600 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                横向き (297×210mm)
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -133,7 +195,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               <input
                 type="number"
                 min="1"
-                max="10"
+                max="20"
                 value={cols}
                 onChange={(e) => setCols(Math.max(1, parseInt(e.target.value, 10) || 1))}
                 className="w-full h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-center font-bold"
@@ -146,7 +208,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               <input
                 type="number"
                 min="1"
-                max="20"
+                max="30"
                 value={rows}
                 onChange={(e) => setRows(Math.max(1, parseInt(e.target.value, 10) || 1))}
                 className="w-full h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-center font-bold"
@@ -159,7 +221,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               <input
                 type="number"
                 min="0"
-                max="50"
+                max="100"
                 value={marginTop}
                 onChange={(e) => setMarginTop(parseInt(e.target.value, 10) || 0)}
                 className="w-full h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-center font-bold"
@@ -172,7 +234,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               <input
                 type="number"
                 min="0"
-                max="50"
+                max="100"
                 value={marginLeft}
                 onChange={(e) => setMarginLeft(parseInt(e.target.value, 10) || 0)}
                 className="w-full h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-center font-bold"
@@ -185,7 +247,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               <input
                 type="number"
                 min="0"
-                max="20"
+                max="50"
                 value={gapX}
                 onChange={(e) => setGapX(parseInt(e.target.value, 10) || 0)}
                 className="w-full h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-center font-bold"
@@ -198,7 +260,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               <input
                 type="number"
                 min="0"
-                max="20"
+                max="50"
                 value={gapY}
                 onChange={(e) => setGapY(parseInt(e.target.value, 10) || 0)}
                 className="w-full h-9 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-center font-bold"
@@ -210,25 +272,27 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
       {/* A4 シートプレビュー領域 */}
       <main className="flex-1 overflow-auto p-4 flex items-center justify-center">
-        {/* A4比率 (210 : 297 ≒ 1 : 1.414) の用紙コンテナ */}
+        {/* A4比率 (縦 210:297 または 横 297:210) の用紙コンテナ */}
         <div
           id="print-sheet"
-          className="bg-white shadow-2xl border border-slate-300 relative mx-auto overflow-hidden transition-all"
+          className="bg-white shadow-2xl border border-slate-300 relative mx-auto overflow-hidden transition-all duration-300"
           style={{
-            width: '320px',
-            height: `${320 * (297 / 210)}px`,
+            width: paperOrientation === 'landscape' ? '340px' : '300px',
+            height: paperOrientation === 'landscape'
+              ? `${Math.round(340 * (210 / 297))}px`
+              : `${Math.round(300 * (297 / 210))}px`,
           }}
         >
           {/* A4グリッド上の配置プレビュー */}
           {Array.from({ length: rows }).map((_, r) =>
             Array.from({ length: cols }).map((_, c) => {
-              // A4 (210x297mm) に対するパーセンテージ位置
-              const xPercent = ((marginLeft + c * (label.width + gapX)) / 210) * 100;
-              const yPercent = ((marginTop + r * (label.height + gapY)) / 297) * 100;
-              const wPercent = (label.width / 210) * 100;
-              const hPercent = (label.height / 297) * 100;
+              // A4用紙サイズに対するパーセンテージ位置
+              const xPercent = ((marginLeft + c * (label.width + gapX)) / pageWidth) * 100;
+              const yPercent = ((marginTop + r * (label.height + gapY)) / pageHeight) * 100;
+              const wPercent = (label.width / pageWidth) * 100;
+              const hPercent = (label.height / pageHeight) * 100;
 
-              if (xPercent + wPercent > 100 || yPercent + hPercent > 100) {
+              if (xPercent + wPercent > 100.1 || yPercent + hPercent > 100.1) {
                 return null; // A4枠外は表示しない
               }
 
@@ -265,8 +329,8 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
       <div
         className="print-only hidden"
         style={{
-          width: '210mm',
-          height: '297mm',
+          width: `${pageWidth}mm`,
+          height: `${pageHeight}mm`,
           position: 'relative',
           margin: 0,
           padding: 0,
@@ -278,7 +342,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             const x = marginLeft + c * (label.width + gapX);
             const y = marginTop + r * (label.height + gapY);
 
-            if (x + label.width > 210 || y + label.height > 297) return null;
+            if (x + label.width > pageWidth + 0.1 || y + label.height > pageHeight + 0.1) return null;
 
             return (
               <div
@@ -317,7 +381,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
           className="w-full h-13 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-base rounded-2xl shadow-md flex items-center justify-center gap-2 active:scale-98 transition-all"
         >
           <Printer className="w-5 h-5" />
-          <span>今すぐ印刷する (A4)</span>
+          <span>今すぐ印刷する (A4{paperOrientation === 'landscape' ? '横' : '縦'})</span>
         </button>
 
         {/* PDF/PNG保存ボタングリッド */}
