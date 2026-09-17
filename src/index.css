@@ -22,24 +22,9 @@ body {
   touch-action: none;
 }
 
-/* 印刷用スタイル */
+/* 印刷時の共通非表示クラス */
 @media print {
-  html, body {
-    background: #ffffff !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    overflow: hidden !important;
-  }
   .no-print {
     display: none !important;
-  }
-  .print-only {
-    display: block !important;
-  }
-  @page {
-    size: auto;
-    margin: 0;
   }
 }

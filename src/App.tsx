@@ -196,8 +196,8 @@ export const App: React.FC = () => {
     viewState.type === 'products' ||
     viewState.type === 'settings';
 
-  // エディタ画面は完全フルスクリーン（fixed inset-0 h-dvh）として直接レンダリング
-  if (viewState.type === 'editor') {
+  // エディタ画面および印刷プレビュー画面は親ラッパーを排除して直接レンダリング
+  if (viewState.type === 'editor' || viewState.type === 'print_preview') {
     return <>{renderContent()}</>;
   }
 

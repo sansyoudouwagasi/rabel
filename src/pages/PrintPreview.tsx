@@ -106,7 +106,9 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
   // ブラウザ印刷実行
   const handlePrint = () => {
-    window.print();
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   // A4 PDF 保存
@@ -171,7 +173,6 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
           html, body {
             width: 100% !important;
             height: 100% !important;
-            max-height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -179,36 +180,58 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print, header, nav, main, footer {
+          .no-print {
             display: none !important;
           }
           .print-page-wrapper {
-            display: block !important;
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: 100% !important;
             max-height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
             overflow: hidden !important;
             border: none !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
-          .print-only {
-            display: block !important;
-            position: relative !important;
-            width: ${pageWidth}mm !important;
-            height: ${pageHeight - 1}mm !important;
-            max-width: ${pageWidth}mm !important;
-            max-height: ${pageHeight - 1}mm !important;
-            margin: 0 auto !important;
+          main.print-main-area {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            margin: 0 !important;
             padding: 0 !important;
+            overflow: hidden !important;
+            page-break-after: avoid !important;
+            break-after: avoid !important;
+          }
+          #print-sheet {
+            position: relative !important;
+            box-shadow: none !important;
+            border: none !important;
+            margin: auto !important;
+            /* プリンターのハードウェア余白を考慮し、確実に1枚に収める */
+            width: ${paperOrientation === 'landscape' ? 'calc(100vw - 10mm)' : 'auto'} !important;
+            height: ${paperOrientation === 'landscape' ? 'auto' : 'calc(100vh - 10mm)'} !important;
+            max-width: calc(100vw - 10mm) !important;
+            max-height: calc(100vh - 10mm) !important;
+            aspect-ratio: ${pageWidth} / ${pageHeight} !important;
             background-color: #ffffff !important;
             overflow: hidden !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             page-break-after: avoid !important;
             break-after: avoid !important;
+            page-break-before: avoid !important;
+            break-before: avoid !important;
           }
         }
       `}</style>
@@ -362,8 +385,8 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
         </div>
       )}
 
-      {/* A4 シートプレビュー領域 (画面表示専用) */}
-      <main className="flex-1 overflow-auto p-4 flex items-center justify-center no-print">
+      {/* A4 シートプレビュー領域 (画面表示 & 印刷共通) */}
+      <main className="print-main-area flex-1 overflow-auto p-4 flex items-center justify-center">
         {/* A4比率 (縦 210:297 または 横 297:210) の用紙コンテナ */}
         <div
           id="print-sheet"
@@ -433,84 +456,6 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
           )}
         </div>
       </main>
-
-      {/* 印刷専用スタイル (ブラウザ印刷時に実寸A4で出力) */}
-      <div
-        className="print-only hidden"
-        style={{
-          width: `${pageWidth}mm`,
-          height: `${pageHeight - 1}mm`,
-          position: 'relative',
-          margin: '0 auto',
-          padding: 0,
-          backgroundColor: '#ffffff',
-          overflow: 'hidden',
-        }}
-      >
-        {isFullA4 ? (
-          /* A4 1枚全面印刷 */
-          <div
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              width: `${pageWidth}mm`,
-              height: `${pageHeight - 1}mm`,
-              overflow: 'hidden',
-            }}
-          >
-            {label.thumbnailUrl && (
-              <img
-                src={label.thumbnailUrl}
-                alt=""
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
-                }}
-              />
-            )}
-          </div>
-        ) : (
-          /* 通常の面付け印刷 */
-          Array.from({ length: rows }).map((_, r) =>
-            Array.from({ length: cols }).map((_, c) => {
-              const x = marginLeft + c * (label.width + gapX);
-              const y = marginTop + r * (label.height + gapY);
-
-              if (x + label.width > pageWidth + 0.5 || y + label.height > pageHeight + 0.5) return null;
-
-              return (
-                <div
-                  key={`print-${r}-${c}`}
-                  style={{
-                    position: 'absolute',
-                    left: `${x}mm`,
-                    top: `${y}mm`,
-                    width: `${label.width}mm`,
-                    height: `${label.height}mm`,
-                    overflow: 'hidden',
-                  }}
-                >
-                  {label.thumbnailUrl && (
-                    <img
-                      src={label.thumbnailUrl}
-                      alt=""
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                        display: 'block',
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })
-          )
-        )}
-      </div>
 
       {/* 下部アクションバー (印刷時は非表示) */}
       <div className="no-print bg-white border-t border-slate-200 p-4 space-y-2 max-w-md mx-auto w-full">
