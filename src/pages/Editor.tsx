@@ -492,6 +492,13 @@ export const Editor: React.FC<EditorProps> = ({
     handleObjectModified();
   };
 
+  // 画面マウント時に最上部スクロールを強制（スクロール位置引き継ぎによるヘッダー消失を防止）
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
+
   // クリーンアップ
   useEffect(() => {
     return () => {
@@ -509,7 +516,7 @@ export const Editor: React.FC<EditorProps> = ({
     !isImageSelected;
 
   return (
-    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden select-none">
+    <div className="fixed inset-0 h-dvh w-full flex flex-col bg-slate-100 overflow-hidden select-none z-10">
       {/* 非表示の写真アップロードinput */}
       <input
         ref={fileInputRef}
@@ -525,27 +532,27 @@ export const Editor: React.FC<EditorProps> = ({
         showBack
         onBack={onBack}
         rightAction={
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {/* Undo / Redo */}
             <button
               type="button"
               onClick={handleUndo}
               disabled={!canUndo}
-              className="p-2 text-slate-600 disabled:text-slate-300 hover:bg-slate-100 rounded-xl active:scale-95"
+              className="p-1.5 sm:p-2 text-slate-600 disabled:text-slate-300 hover:bg-slate-100 rounded-xl active:scale-95 shrink-0"
               title="元に戻す"
               aria-label="元に戻す"
             >
-              <Undo2 className="w-5 h-5" />
+              <Undo2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
             <button
               type="button"
               onClick={handleRedo}
               disabled={!canRedo}
-              className="p-2 text-slate-600 disabled:text-slate-300 hover:bg-slate-100 rounded-xl active:scale-95"
+              className="p-1.5 sm:p-2 text-slate-600 disabled:text-slate-300 hover:bg-slate-100 rounded-xl active:scale-95 shrink-0"
               title="やり直す"
               aria-label="やり直す"
             >
-              <Redo2 className="w-5 h-5" />
+              <Redo2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* 印刷・プレビューボタン */}
@@ -574,11 +581,11 @@ export const Editor: React.FC<EditorProps> = ({
                     paperOrientation: existingLabel?.paperOrientation || initialSize.paperOrientation,
                   });
                 }}
-                className="h-9 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95"
+                className="h-8 sm:h-9 px-2 sm:px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95 shrink-0"
                 title="印刷"
               >
-                <Printer className="w-4 h-4 text-blue-600" />
-                <span className="hidden sm:inline">印刷</span>
+                <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
+                <span>印刷</span>
               </button>
             )}
 
@@ -587,7 +594,7 @@ export const Editor: React.FC<EditorProps> = ({
               <button
                 type="button"
                 onClick={() => setIsDeleteModalOpen(true)}
-                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl active:scale-95"
+                className="p-1.5 sm:p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl active:scale-95 shrink-0"
                 title="ラベルを削除"
                 aria-label="ラベルを削除"
               >
@@ -599,16 +606,16 @@ export const Editor: React.FC<EditorProps> = ({
             <button
               type="button"
               onClick={() => performSave(false)}
-              className="h-9 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1 active:scale-95 transition-all"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1 active:scale-95 transition-all shrink-0"
             >
               {saveSuccess ? (
                 <>
-                  <Check className="w-4 h-4" />
+                  <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>保存済</span>
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>保存</span>
                 </>
               )}
@@ -618,7 +625,7 @@ export const Editor: React.FC<EditorProps> = ({
       />
 
       {/* ラベル名とサイズ情報バー */}
-      <div className="bg-white px-4 py-1.5 border-b border-slate-200 flex items-center justify-between text-xs">
+      <div className="bg-white px-3 sm:px-4 py-1.5 border-b border-slate-200 flex items-center justify-between text-xs shrink-0 w-full">
         <input
           type="text"
           value={labelName}
@@ -626,16 +633,16 @@ export const Editor: React.FC<EditorProps> = ({
             setLabelName(e.target.value);
             triggerAutoSave();
           }}
-          className="font-bold text-slate-800 bg-transparent border-none focus:outline-hidden focus:bg-slate-50 px-2 py-1 rounded-md max-w-[200px] text-sm"
+          className="font-bold text-slate-800 bg-transparent border-none focus:outline-hidden focus:bg-slate-50 px-1 sm:px-2 py-1 rounded-md max-w-[180px] sm:max-w-[200px] text-xs sm:text-sm"
           placeholder="ラベル名を入力"
         />
-        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
           {initialSize.width} × {initialSize.height} mm
         </span>
       </div>
 
       {/* 中央：Canvas描画領域 */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <LabelCanvas
           size={initialSize}
           backgroundColor={backgroundColor}
@@ -719,7 +726,7 @@ export const Editor: React.FC<EditorProps> = ({
       </div>
 
       {/* プロパティパネル (文字選択時・画像選択時・図形選択時・背景色設定時) */}
-      <div className="z-20 bg-white">
+      <div className="z-20 bg-white shrink-0">
         {isTextSelected && (
           <TextPropertyPanel
             textObject={selectedObject as fabric.IText}
@@ -836,7 +843,7 @@ export const Editor: React.FC<EditorProps> = ({
       </div>
 
       {/* 下部固定メインツールバー */}
-      <div className="bg-white border-t border-slate-200 z-30 pb-safe">
+      <div className="bg-white border-t border-slate-200 z-30 pb-safe shrink-0">
         <div className="flex items-center justify-around px-2 py-1.5 max-w-md mx-auto">
           {/* 文字 */}
           <button

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { LabelSize, SavedLabel, ViewState } from './types/label';
 import type { LabelTemplate } from './templates/templates';
 import { Home } from './pages/Home';
@@ -21,6 +21,13 @@ export const App: React.FC = () => {
     template?: LabelTemplate | null;
   } | null>(null);
   const [printingLabel, setPrintingLabel] = useState<SavedLabel | null>(null);
+
+  // 画面遷移時にスクロール位置を確実にリセット
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [viewState.type]);
 
   // ボトムナビタブ切り替え
   const handleTabChange = (tab: BottomNavTab) => {
@@ -188,6 +195,11 @@ export const App: React.FC = () => {
     viewState.type === 'saved_labels' ||
     viewState.type === 'products' ||
     viewState.type === 'settings';
+
+  // エディタ画面は完全フルスクリーン（fixed inset-0 h-dvh）として直接レンダリング
+  if (viewState.type === 'editor') {
+    return <>{renderContent()}</>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
