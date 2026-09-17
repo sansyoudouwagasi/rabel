@@ -6,6 +6,7 @@ import { Header } from '../components/Header';
 import { LabelCanvas } from '../components/Editor/LabelCanvas';
 import { TextPropertyPanel } from '../components/Editor/TextPropertyPanel';
 import { ShapePropertyPanel } from '../components/Editor/ShapePropertyPanel';
+import { ImagePropertyPanel } from '../components/Editor/ImagePropertyPanel';
 import { BackgroundPanel } from '../components/Editor/BackgroundPanel';
 import { ProductSelectModal } from '../components/Editor/ProductSelectModal';
 import { resizeImageFile } from '../utils/imageUtils';
@@ -24,6 +25,8 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
+  RotateCw,
+  FlipHorizontal,
   Save,
   Check,
   Printer,
@@ -316,6 +319,7 @@ export const Editor: React.FC<EditorProps> = ({
         canvas.setActiveObject(fabricImg);
         canvas.renderAll();
         setSelectedObject(fabricImg);
+        setActiveBottomPanel('none');
         handleObjectModified();
       };
       imgEl.src = dataUrl;
@@ -498,10 +502,11 @@ export const Editor: React.FC<EditorProps> = ({
   }, []);
 
   const isTextSelected = selectedObject instanceof fabric.IText;
+  const isImageSelected = selectedObject instanceof fabric.FabricImage;
   const isShapeSelected =
     selectedObject &&
     !isTextSelected &&
-    !(selectedObject instanceof fabric.FabricImage);
+    !isImageSelected;
 
   return (
     <div className="flex flex-col h-screen bg-slate-100 overflow-hidden select-none">
@@ -639,7 +644,7 @@ export const Editor: React.FC<EditorProps> = ({
           onObjectModified={handleObjectModified}
         />
 
-        {/* 選択中オブジェクトのクイック操作（前面・背面・削除） */}
+        {/* 選択中オブジェクトのクイック操作（前面・背面・回転・反転・削除） */}
         {selectedObject && (
           <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-white/95 backdrop-blur-xs p-1 rounded-2xl shadow-lg border border-slate-200">
             <button
@@ -660,6 +665,44 @@ export const Editor: React.FC<EditorProps> = ({
             >
               <ArrowDown className="w-4 h-4" />
             </button>
+
+            {isImageSelected && (
+              <>
+                <div className="w-[1px] h-4 bg-slate-200 mx-0.5" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const img = selectedObject as fabric.FabricImage;
+                    const newAngle = (Math.round(img.angle || 0) + 90) % 360;
+                    img.set('angle', newAngle);
+                    img.setCoords();
+                    canvasRef.current?.renderAll();
+                    handleObjectModified();
+                  }}
+                  className="p-2 text-slate-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl active:scale-95 transition-all"
+                  title="右90°回転"
+                  aria-label="右90°回転"
+                >
+                  <RotateCw className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const img = selectedObject as fabric.FabricImage;
+                    img.set('flipX', !img.flipX);
+                    img.setCoords();
+                    canvasRef.current?.renderAll();
+                    handleObjectModified();
+                  }}
+                  className="p-2 text-slate-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl active:scale-95 transition-all"
+                  title="左右反転"
+                  aria-label="左右反転"
+                >
+                  <FlipHorizontal className="w-4 h-4" />
+                </button>
+              </>
+            )}
+
             <div className="w-[1px] h-4 bg-slate-200 mx-0.5" />
             <button
               type="button"
@@ -675,11 +718,22 @@ export const Editor: React.FC<EditorProps> = ({
         )}
       </div>
 
-      {/* プロパティパネル (文字選択時・図形選択時・背景色設定時) */}
+      {/* プロパティパネル (文字選択時・画像選択時・図形選択時・背景色設定時) */}
       <div className="z-20 bg-white">
         {isTextSelected && (
           <TextPropertyPanel
             textObject={selectedObject as fabric.IText}
+            onUpdate={() => {
+              canvasRef.current?.renderAll();
+              handleObjectModified();
+            }}
+          />
+        )}
+
+        {isImageSelected && (
+          <ImagePropertyPanel
+            imageObject={selectedObject as fabric.FabricImage}
+            canvas={canvasRef.current}
             onUpdate={() => {
               canvasRef.current?.renderAll();
               handleObjectModified();
