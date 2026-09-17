@@ -61,13 +61,21 @@ export async function exportA4SheetPdf(
     gapYMm,
   } = options;
 
+  // A4全面サイズの場合は1枚全面に配置（はみ出しチェックで除外されるのを防止）
+  const isFullA4 = labelWidthMm >= pageWidth - 5 && labelHeightMm >= pageHeight - 5;
+  if (isFullA4) {
+    doc.addImage(imgDataUrl, 'PNG', 0, 0, pageWidth, pageHeight);
+    doc.save(filename);
+    return;
+  }
+
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const x = marginLeftMm + c * (labelWidthMm + gapXMm);
       const y = marginTopMm + r * (labelHeightMm + gapYMm);
 
       // A4用紙の範囲内かチェック (わずかな丸め誤差を許容)
-      if (x + labelWidthMm <= pageWidth + 0.1 && y + labelHeightMm <= pageHeight + 0.1) {
+      if (x + labelWidthMm <= pageWidth + 0.5 && y + labelHeightMm <= pageHeight + 0.5) {
         doc.addImage(imgDataUrl, 'PNG', x, y, labelWidthMm, labelHeightMm);
       }
     }

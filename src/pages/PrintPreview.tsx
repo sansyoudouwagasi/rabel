@@ -17,16 +17,58 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
   const pageWidth = paperOrientation === 'landscape' ? 297 : 210;
   const pageHeight = paperOrientation === 'landscape' ? 210 : 297;
 
-  // 用紙サイズに応じた自動面付け初期値を算出する関数
-  const calcDefaultCols = (pw: number) => Math.max(1, Math.floor((pw - 20) / label.width));
-  const calcDefaultRows = (ph: number) => Math.max(1, Math.floor((ph - 20) / label.height));
+  // A4用紙1枚全面（POPやポスターなど）かどうかを判定
+  const isFullA4 = useMemo(() => {
+    return (
+      (Math.abs(label.width - pageWidth) <= 3 && Math.abs(label.height - pageHeight) <= 3) ||
+      (label.width >= pageWidth - 5 && label.height >= pageHeight - 5)
+    );
+  }, [label.width, label.height, pageWidth, pageHeight]);
 
-  const [cols, setCols] = useState(() => calcDefaultCols(pageWidth));
-  const [rows, setRows] = useState(() => calcDefaultRows(pageHeight));
-  const [marginTop, setMarginTop] = useState(10);
-  const [marginLeft, setMarginLeft] = useState(10);
-  const [gapX, setGapX] = useState(2);
-  const [gapY, setGapY] = useState(2);
+  // 用紙サイズ・ラベルサイズに応じた自動面付け初期値の算出関数
+  const calcLayoutDefaults = (pw: number, ph: number) => {
+    // A4全面サイズの場合：余白なし、1枚ピッタリ全面配置
+    if (label.width >= pw - 5 && label.height >= ph - 5) {
+      return {
+        cols: 1,
+        rows: 1,
+        marginLeft: 0,
+        marginTop: 0,
+        gapX: 0,
+        gapY: 0,
+      };
+    }
+
+    const defaultGapX = 2;
+    const defaultGapY = 2;
+
+    // 用紙に収まる列数・行数を計算
+    const c = Math.max(1, Math.floor((pw - 10) / label.width));
+    const r = Math.max(1, Math.floor((ph - 10) / label.height));
+
+    // ラベル群を用紙中央に綺麗に配置するためのマージン自動計算
+    const contentW = c * label.width + Math.max(0, c - 1) * defaultGapX;
+    const contentH = r * label.height + Math.max(0, r - 1) * defaultGapY;
+    const ml = Math.max(0, Math.floor((pw - contentW) / 2));
+    const mt = Math.max(0, Math.floor((ph - contentH) / 2));
+
+    return {
+      cols: c,
+      rows: r,
+      marginLeft: ml,
+      marginTop: mt,
+      gapX: defaultGapX,
+      gapY: defaultGapY,
+    };
+  };
+
+  const initialLayout = useMemo(() => calcLayoutDefaults(pageWidth, pageHeight), []);
+  const [cols, setCols] = useState(initialLayout.cols);
+  const [rows, setRows] = useState(initialLayout.rows);
+  const [marginTop, setMarginTop] = useState(initialLayout.marginTop);
+  const [marginLeft, setMarginLeft] = useState(initialLayout.marginLeft);
+  const [gapX, setGapX] = useState(initialLayout.gapX);
+  const [gapY, setGapY] = useState(initialLayout.gapY);
   const [showSettings, setShowSettings] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -36,8 +78,13 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
     setPaperOrientation(newOrientation);
     const newPw = newOrientation === 'landscape' ? 297 : 210;
     const newPh = newOrientation === 'landscape' ? 210 : 297;
-    setCols(calcDefaultCols(newPw));
-    setRows(calcDefaultRows(newPh));
+    const defaults = calcLayoutDefaults(newPw, newPh);
+    setCols(defaults.cols);
+    setRows(defaults.rows);
+    setMarginLeft(defaults.marginLeft);
+    setMarginTop(defaults.marginTop);
+    setGapX(defaults.gapX);
+    setGapY(defaults.gapY);
   };
 
   const totalCount = cols * rows;
@@ -110,7 +157,7 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-between">
+    <div className="print-page-wrapper min-h-screen bg-slate-100 flex flex-col justify-between">
       {/* 動的印刷スタイル: 選択中の用紙向きに応じた@page sizeを設定し、確実に1枚に収める */}
       <style>{`
         @media print {
@@ -118,27 +165,43 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             size: A4 ${paperOrientation} !important;
             margin: 0mm !important;
           }
+          *, *::before, *::after {
+            box-sizing: border-box !important;
+          }
           html, body {
             width: 100% !important;
             height: 100% !important;
+            max-height: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
             overflow: hidden !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .no-print, header, nav, main, footer {
             display: none !important;
           }
+          .print-page-wrapper {
+            display: block !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            overflow: hidden !important;
+            border: none !important;
+          }
           .print-only {
             display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: relative !important;
             width: ${pageWidth}mm !important;
-            height: ${pageHeight}mm !important;
+            height: ${pageHeight - 1}mm !important;
             max-width: ${pageWidth}mm !important;
-            max-height: ${pageHeight}mm !important;
-            margin: 0 !important;
+            max-height: ${pageHeight - 1}mm !important;
+            margin: 0 auto !important;
             padding: 0 !important;
             background-color: #ffffff !important;
             overflow: hidden !important;
@@ -178,10 +241,10 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
         <div className="no-print bg-white border-b border-slate-200 px-4 py-3 shadow-md max-w-md mx-auto w-full space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-700">
-              A4面付け設定 ({paperOrientation === 'landscape' ? '横向き' : '縦向き'})
+              {isFullA4 ? 'A4 1枚全面印刷' : 'A4面付け設定'} ({paperOrientation === 'landscape' ? '横向き' : '縦向き'})
             </span>
             <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-              合計 {totalCount} 枚配置
+              {isFullA4 ? '1枚全面' : `合計 ${totalCount} 枚配置`}
             </span>
           </div>
 
@@ -312,44 +375,61 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
               : `${Math.round(300 * (297 / 210))}px`,
           }}
         >
-          {/* A4グリッド上の配置プレビュー */}
-          {Array.from({ length: rows }).map((_, r) =>
-            Array.from({ length: cols }).map((_, c) => {
-              // A4用紙サイズに対するパーセンテージ位置
-              const xPercent = ((marginLeft + c * (label.width + gapX)) / pageWidth) * 100;
-              const yPercent = ((marginTop + r * (label.height + gapY)) / pageHeight) * 100;
-              const wPercent = (label.width / pageWidth) * 100;
-              const hPercent = (label.height / pageHeight) * 100;
-
-              if (xPercent + wPercent > 100.1 || yPercent + hPercent > 100.1) {
-                return null; // A4枠外は表示しない
-              }
-
-              return (
-                <div
-                  key={`${r}-${c}`}
-                  className="absolute border border-dashed border-slate-300 overflow-hidden bg-white"
-                  style={{
-                    left: `${xPercent}%`,
-                    top: `${yPercent}%`,
-                    width: `${wPercent}%`,
-                    height: `${hPercent}%`,
-                  }}
-                >
-                  {label.thumbnailUrl ? (
-                    <img
-                      src={label.thumbnailUrl}
-                      alt={label.name}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[8px] text-slate-300">
-                      {label.name}
-                    </div>
-                  )}
+          {isFullA4 ? (
+            /* A4 1枚全面プレビュー */
+            <div className="w-full h-full relative overflow-hidden bg-white">
+              {label.thumbnailUrl ? (
+                <img
+                  src={label.thumbnailUrl}
+                  alt={label.name}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs text-slate-300">
+                  {label.name}
                 </div>
-              );
-            })
+              )}
+            </div>
+          ) : (
+            /* A4グリッド上の配置プレビュー */
+            Array.from({ length: rows }).map((_, r) =>
+              Array.from({ length: cols }).map((_, c) => {
+                // A4用紙サイズに対するパーセンテージ位置
+                const xPercent = ((marginLeft + c * (label.width + gapX)) / pageWidth) * 100;
+                const yPercent = ((marginTop + r * (label.height + gapY)) / pageHeight) * 100;
+                const wPercent = (label.width / pageWidth) * 100;
+                const hPercent = (label.height / pageHeight) * 100;
+
+                if (xPercent + wPercent > 100.5 || yPercent + hPercent > 100.5) {
+                  return null; // A4枠外は表示しない
+                }
+
+                return (
+                  <div
+                    key={`${r}-${c}`}
+                    className="absolute border border-dashed border-slate-300 overflow-hidden bg-white"
+                    style={{
+                      left: `${xPercent}%`,
+                      top: `${yPercent}%`,
+                      width: `${wPercent}%`,
+                      height: `${hPercent}%`,
+                    }}
+                  >
+                    {label.thumbnailUrl ? (
+                      <img
+                        src={label.thumbnailUrl}
+                        alt={label.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[8px] text-slate-300">
+                        {label.name}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )
           )}
         </div>
       </main>
@@ -359,45 +439,76 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
         className="print-only hidden"
         style={{
           width: `${pageWidth}mm`,
-          height: `${pageHeight}mm`,
+          height: `${pageHeight - 1}mm`,
           position: 'relative',
-          margin: 0,
+          margin: '0 auto',
           padding: 0,
           backgroundColor: '#ffffff',
+          overflow: 'hidden',
         }}
       >
-        {Array.from({ length: rows }).map((_, r) =>
-          Array.from({ length: cols }).map((_, c) => {
-            const x = marginLeft + c * (label.width + gapX);
-            const y = marginTop + r * (label.height + gapY);
-
-            if (x + label.width > pageWidth + 0.1 || y + label.height > pageHeight + 0.1) return null;
-
-            return (
-              <div
-                key={`print-${r}-${c}`}
+        {isFullA4 ? (
+          /* A4 1枚全面印刷 */
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              width: `${pageWidth}mm`,
+              height: `${pageHeight - 1}mm`,
+              overflow: 'hidden',
+            }}
+          >
+            {label.thumbnailUrl && (
+              <img
+                src={label.thumbnailUrl}
+                alt=""
                 style={{
-                  position: 'absolute',
-                  left: `${x}mm`,
-                  top: `${y}mm`,
-                  width: `${label.width}mm`,
-                  height: `${label.height}mm`,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  display: 'block',
                 }}
-              >
-                {label.thumbnailUrl && (
-                  <img
-                    src={label.thumbnailUrl}
-                    alt=""
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                    }}
-                  />
-                )}
-              </div>
-            );
-          })
+              />
+            )}
+          </div>
+        ) : (
+          /* 通常の面付け印刷 */
+          Array.from({ length: rows }).map((_, r) =>
+            Array.from({ length: cols }).map((_, c) => {
+              const x = marginLeft + c * (label.width + gapX);
+              const y = marginTop + r * (label.height + gapY);
+
+              if (x + label.width > pageWidth + 0.5 || y + label.height > pageHeight + 0.5) return null;
+
+              return (
+                <div
+                  key={`print-${r}-${c}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${x}mm`,
+                    top: `${y}mm`,
+                    width: `${label.width}mm`,
+                    height: `${label.height}mm`,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {label.thumbnailUrl && (
+                    <img
+                      src={label.thumbnailUrl}
+                      alt=""
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain',
+                        display: 'block',
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })
+          )
         )}
       </div>
 

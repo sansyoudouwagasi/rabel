@@ -559,7 +559,7 @@ export const Editor: React.FC<EditorProps> = ({
                   const zoom = canvas?.getZoom() || 1;
                   const thumb = canvas?.toDataURL({
                     format: 'png',
-                    multiplier: 0.5 / zoom,
+                    multiplier: 1 / zoom,
                   });
                   onOpenPrint({
                     id: labelId,
