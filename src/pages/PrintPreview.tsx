@@ -16,6 +16,12 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
   const pageWidth = paperOrientation === 'landscape' ? 297 : 210;
   const pageHeight = paperOrientation === 'landscape' ? 210 : 297;
+  // 印刷時、プリンターの非印字領域(各辺約5mm)を避けるための縮小率（A4比率は維持）
+  const PRINT_SAFE_MARGIN_MM = 10;
+  const sheetScale = Math.min(
+    (pageWidth - PRINT_SAFE_MARGIN_MM) / pageWidth,
+    (pageHeight - PRINT_SAFE_MARGIN_MM) / pageHeight
+  );
 
   // A4用紙1枚全面（POPやポスターなど）かどうかを判定
   const isFullA4 = useMemo(() => {
@@ -161,18 +167,26 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
   return (
     <div className="print-page-wrapper min-h-screen bg-slate-100 flex flex-col justify-between">
       {/* 動的印刷スタイル: 選択中の用紙向きに応じた@page sizeを設定し、確実に1枚に収める */}
+      {/*
+        注意: Android Chrome などのモバイル印刷では vh/vw が「画面」のビューポート基準で
+        計算されるため、用紙サイズとズレて2ページ目が発生する。
+        そのため印刷時のサイズはすべて mm の絶対値で指定し、さらに丸め誤差で
+        はみ出さないよう用紙より少しだけ小さい高さにしている。
+      */}
       <style>{`
         @media print {
           @page {
-            size: A4 ${paperOrientation} !important;
-            margin: 0mm !important;
+            size: A4 ${paperOrientation};
+            margin: 0;
           }
           *, *::before, *::after {
             box-sizing: border-box !important;
           }
-          html, body {
-            width: 100% !important;
-            height: 100% !important;
+          html, body, #root {
+            width: ${pageWidth}mm !important;
+            height: ${pageHeight - 2}mm !important;
+            min-height: 0 !important;
+            max-height: ${pageHeight - 2}mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -187,10 +201,10 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            max-width: 100% !important;
-            max-height: 100% !important;
+            width: ${pageWidth}mm !important;
+            height: ${pageHeight - 2}mm !important;
+            min-height: 0 !important;
+            max-height: ${pageHeight - 2}mm !important;
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
@@ -201,12 +215,12 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
           }
           main.print-main-area {
             display: flex !important;
+            flex: none !important;
             align-items: center !important;
             justify-content: center !important;
             width: 100% !important;
             height: 100% !important;
-            max-width: 100% !important;
-            max-height: 100% !important;
+            min-height: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
             overflow: hidden !important;
@@ -215,15 +229,16 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
           }
           #print-sheet {
             position: relative !important;
+            flex: none !important;
             box-shadow: none !important;
             border: none !important;
-            margin: auto !important;
-            /* プリンターのハードウェア余白を考慮し、確実に1枚に収める */
-            width: ${paperOrientation === 'landscape' ? 'calc(100vw - 10mm)' : 'auto'} !important;
-            height: ${paperOrientation === 'landscape' ? 'auto' : 'calc(100vh - 10mm)'} !important;
-            max-width: calc(100vw - 10mm) !important;
-            max-height: calc(100vh - 10mm) !important;
-            aspect-ratio: ${pageWidth} / ${pageHeight} !important;
+            margin: 0 !important;
+            transition: none !important;
+            /* プリンターのハードウェア余白(約5mm)を考慮し、A4比率を保ったまま縮小して確実に1枚に収める */
+            width: ${(pageWidth * sheetScale).toFixed(2)}mm !important;
+            height: ${(pageHeight * sheetScale).toFixed(2)}mm !important;
+            max-width: none !important;
+            max-height: none !important;
             background-color: #ffffff !important;
             overflow: hidden !important;
             page-break-inside: avoid !important;
