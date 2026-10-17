@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { PRESET_SIZES, type LabelSize } from '../types/label';
+import { PRESET_SIZES, A4_SHEET_PRESETS, type LabelSize } from '../types/label';
 import { Header } from '../components/Header';
-import { Check, Sparkles, SlidersHorizontal, AlertCircle, FileText } from 'lucide-react';
+import { Check, Sparkles, SlidersHorizontal, AlertCircle, FileText, LayoutGrid } from 'lucide-react';
 
 interface CreateLabelProps {
   onBack: () => void;
@@ -14,7 +14,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
 }) => {
   // A4 用紙の向き（縦向き / 横向き）
   const [paperOrientation, setPaperOrientation] = useState<'portrait' | 'landscape'>('portrait');
-  const [selectedPreset, setSelectedPreset] = useState<LabelSize>(PRESET_SIZES[2]); // デフォルト 50×30
+  const [selectedPreset, setSelectedPreset] = useState<LabelSize>(A4_SHEET_PRESETS[0]); // デフォルト 24面
   const [isCustom, setIsCustom] = useState(false);
   const [customWidth, setCustomWidth] = useState('50');
   const [customHeight, setCustomHeight] = useState('30');
@@ -22,8 +22,8 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
 
   // A4フルサイズオブジェクト (用紙向きに連動)
   const fullA4Size: LabelSize = paperOrientation === 'landscape'
-    ? { width: 297, height: 210, name: 'A4横 1枚全面 (297×210mm)' }
-    : { width: 210, height: 297, name: 'A4縦 1枚全面 (210×297mm)' };
+    ? { width: 297, height: 210, name: 'A4横 1枚全面 (297×210mm)', formatType: 'full_a4' }
+    : { width: 210, height: 297, name: 'A4縦 1枚全面 (210×297mm)', formatType: 'full_a4' };
 
   const isFullA4Selected = !isCustom &&
     selectedPreset.width === fullA4Size.width &&
@@ -34,14 +34,17 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
     // もしA4全画面が選ばれていた場合は、新しい向きのA4サイズに自動更新
     if (isFullA4Selected) {
       const newFull = orientation === 'landscape'
-        ? { width: 297, height: 210, name: 'A4横 1枚全面 (297×210mm)' }
-        : { width: 210, height: 297, name: 'A4縦 1枚全面 (210×297mm)' };
+        ? { width: 297, height: 210, name: 'A4横 1枚全面 (297×210mm)', formatType: 'full_a4' as const }
+        : { width: 210, height: 297, name: 'A4縦 1枚全面 (210×297mm)', formatType: 'full_a4' as const };
       setSelectedPreset(newFull);
     }
   };
 
   const handlePresetSelect = (size: LabelSize) => {
     setSelectedPreset(size);
+    if (size.sheetLayout) {
+      setPaperOrientation('portrait');
+    }
     setIsCustom(false);
     setErrorMessage('');
   };
@@ -61,11 +64,12 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
         height: Math.round(h),
         name: `カスタム (${Math.round(w)}×${Math.round(h)}mm)`,
         paperOrientation,
+        formatType: 'custom',
       });
     } else {
       onSelectSize({
         ...selectedPreset,
-        paperOrientation,
+        paperOrientation: selectedPreset.sheetLayout ? 'portrait' : paperOrientation,
       });
     }
   };
@@ -79,16 +83,164 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
         <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-3.5 flex items-start gap-3">
           <Sparkles className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
           <p className="text-xs text-blue-900 leading-relaxed font-medium">
-            印刷する用紙の向きを選んでから、シールのサイズを指定してください。
+            市販のA4ラベルシール（24面・44面）や、定番サイズ・全面印刷から選べます。
           </p>
         </div>
 
-        {/* 1. A4 用紙の向き選択 */}
+        {/* 1. 市販 A4規格ラベルシール (24面 / 44面) - 推奨フォーマット */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-1.5">
+              <LayoutGrid className="w-4 h-4 text-blue-600" />
+              <h2 className="text-xs font-bold text-slate-700 tracking-wider">
+                A4規格ラベルシートから選ぶ
+              </h2>
+            </div>
+            <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+              エーワン等の定番用紙
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            {A4_SHEET_PRESETS.map((preset) => {
+              const isSelected =
+                !isCustom &&
+                selectedPreset.width === preset.width &&
+                selectedPreset.height === preset.height;
+              const is24 = preset.formatType === 'sheet_24';
+
+              return (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => handlePresetSelect(preset)}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left transition-all min-h-[72px] touch-manipulation ${
+                    isSelected
+                      ? 'bg-blue-50/80 border-blue-500 shadow-xs ring-2 ring-blue-500/20'
+                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5">
+                    {/* A4シートのミニチュアグラフィック */}
+                    <div className="w-11 h-14 bg-white border border-slate-300 rounded-xs p-0.5 flex flex-col justify-between shadow-xs shrink-0">
+                      <div className={`w-full h-full grid ${is24 ? 'grid-cols-3 grid-rows-8' : 'grid-cols-4 grid-rows-11'} gap-[1px] bg-slate-200 p-[1px]`}>
+                        {Array.from({ length: is24 ? 24 : 44 }).map((_, idx) => (
+                          <div
+                            key={idx}
+                            className={`rounded-[0.5px] ${
+                              isSelected ? 'bg-blue-500' : 'bg-white'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-extrabold text-slate-800">
+                          {preset.width} × {preset.height} mm
+                        </span>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                          {is24 ? '24面 (3×8)' : '44面 (4×11)'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 font-medium">
+                        {is24
+                          ? '上余白 12.9mm / 左余白 6mm'
+                          : '上余白 8.8mm / 左余白 8.4mm'}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {is24
+                          ? '標準宛名・商品パッケージ・表示用'
+                          : 'バーコード・価格表示・小型商品用'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center border shrink-0 ${
+                      isSelected
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. 定番ラベルシール (A4用紙に面付け) */}
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-bold text-slate-500 tracking-wider uppercase">
+              汎用ラベルサイズから選ぶ
+            </h2>
+            <span className="text-[11px] text-slate-400">
+              自動余白でA4に均等配置
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            {PRESET_SIZES.map((size) => {
+              const isSelected =
+                !isCustom &&
+                selectedPreset.width === size.width &&
+                selectedPreset.height === size.height &&
+                !selectedPreset.sheetLayout;
+
+              return (
+                <button
+                  key={`${size.width}x${size.height}`}
+                  type="button"
+                  onClick={() => handlePresetSelect(size)}
+                  className={`flex items-center justify-between p-4 rounded-2xl border text-left transition-all min-h-[56px] touch-manipulation ${
+                    isSelected
+                      ? 'bg-blue-50/60 border-blue-500 shadow-xs ring-2 ring-blue-500/20'
+                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="border border-dashed border-slate-400 bg-slate-100 rounded-xs flex items-center justify-center shrink-0"
+                      style={{
+                        width: `${Math.min(size.width * 0.8, 54)}px`,
+                        height: `${Math.min(size.height * 0.8, 38)}px`,
+                      }}
+                    />
+                    <div>
+                      <span className="text-base font-bold text-slate-800">
+                        {size.width} × {size.height} mm
+                      </span>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {size.name?.split('(')[1]?.replace(')', '') || '汎用'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`w-6 h-6 rounded-full flex items-center justify-center border ${
+                      isSelected
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 3. A4 用紙の向き選択 */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-blue-600" />
-              <span className="text-xs font-bold text-slate-700">A4用紙の向きを選択</span>
+              <span className="text-xs font-bold text-slate-700">A4用紙の向き (全面/汎用サイズ用)</span>
             </div>
             <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
               {paperOrientation === 'landscape' ? 'A4 横向き (297×210mm)' : 'A4 縦向き (210×297mm)'}
@@ -124,7 +276,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
           </div>
         </div>
 
-        {/* 2. A4 1枚全面カード */}
+        {/* 4. A4 1枚全面カード */}
         <div className="space-y-2">
           <h2 className="text-xs font-bold text-slate-500 tracking-wider uppercase px-1">
             A4用紙 1枚全面で作成
@@ -171,68 +323,6 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
               {isFullA4Selected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
             </div>
           </button>
-        </div>
-
-        {/* 3. 定番ラベルシール (A4用紙に面付け) */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-bold text-slate-500 tracking-wider uppercase">
-              定番ラベルシールから選ぶ
-            </h2>
-            <span className="text-[11px] text-slate-400">
-              A4{paperOrientation === 'landscape' ? '横' : '縦'}用紙に面付け印刷
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2.5">
-            {PRESET_SIZES.map((size) => {
-              const isSelected =
-                !isCustom &&
-                selectedPreset.width === size.width &&
-                selectedPreset.height === size.height;
-
-              return (
-                <button
-                  key={`${size.width}x${size.height}`}
-                  type="button"
-                  onClick={() => handlePresetSelect(size)}
-                  className={`flex items-center justify-between p-4 rounded-2xl border text-left transition-all min-h-[56px] touch-manipulation ${
-                    isSelected
-                      ? 'bg-blue-50/60 border-blue-500 shadow-xs ring-2 ring-blue-500/20'
-                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="border border-dashed border-slate-400 bg-slate-100 rounded-xs flex items-center justify-center shrink-0"
-                      style={{
-                        width: `${Math.min(size.width * 0.8, 54)}px`,
-                        height: `${Math.min(size.height * 0.8, 38)}px`,
-                      }}
-                    />
-                    <div>
-                      <span className="text-base font-bold text-slate-800">
-                        {size.width} × {size.height} mm
-                      </span>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {size.name?.split('(')[1]?.replace(')', '') || '汎用'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center border ${
-                      isSelected
-                        ? 'bg-blue-600 border-blue-600 text-white'
-                        : 'border-slate-300 bg-white'
-                    }`}
-                  >
-                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         {/* 4. カスタムサイズ */}

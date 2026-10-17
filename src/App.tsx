@@ -75,6 +75,8 @@ export const App: React.FC = () => {
         height: label.height,
         name: `${label.width}×${label.height}mm`,
         paperOrientation: label.paperOrientation,
+        sheetLayout: label.sheetLayout,
+        formatType: label.formatType,
       },
       savedLabel: label,
     });
@@ -85,6 +87,8 @@ export const App: React.FC = () => {
         width: label.width,
         height: label.height,
         paperOrientation: label.paperOrientation,
+        sheetLayout: label.sheetLayout,
+        formatType: label.formatType,
       },
     });
   };
@@ -147,6 +151,8 @@ export const App: React.FC = () => {
                   width: saved.width,
                   height: saved.height,
                   paperOrientation: saved.paperOrientation,
+                  sheetLayout: saved.sheetLayout,
+                  formatType: saved.formatType,
                 },
                 savedLabel: saved,
               });

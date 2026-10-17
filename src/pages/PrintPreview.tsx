@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import type { SavedLabel } from '../types/label';
+import { findMatchingSheetLayout, A4_SHEET_PRESETS } from '../types/label';
 import { Header } from '../components/Header';
 import { exportA4SheetPdf, exportSingleLabelPdf, type SheetLayoutOptions } from '../utils/exportPdf';
-import { Printer, Download, FileDown, Sliders, Image as ImageIcon } from 'lucide-react';
+import { Printer, Download, FileDown, Sliders, Image as ImageIcon, CheckCircle2, RotateCcw } from 'lucide-react';
 
 interface PrintPreviewProps {
   label: SavedLabel;
@@ -31,8 +32,19 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
     );
   }, [label.width, label.height, pageWidth, pageHeight]);
 
+  // A4規格（24面 / 44面）に一致しているか判定
+  const formatName = useMemo(() => {
+    if (label.formatType === 'sheet_24' || (Math.abs(label.width - 66) <= 0.2 && Math.abs(label.height - 33.9) <= 0.2)) {
+      return 'A4 24面規格 (66×33.9mm / 3×8列)';
+    }
+    if (label.formatType === 'sheet_44' || (Math.abs(label.width - 48.3) <= 0.2 && Math.abs(label.height - 25.4) <= 0.2)) {
+      return 'A4 44面規格 (48.3×25.4mm / 4×11列)';
+    }
+    return null;
+  }, [label.formatType, label.width, label.height]);
+
   // 用紙サイズ・ラベルサイズに応じた自動面付け初期値の算出関数
-  const calcLayoutDefaults = (pw: number, ph: number) => {
+  const calcLayoutDefaults = (pw: number, ph: number, ignorePreset: boolean = false) => {
     // A4全面サイズの場合：余白なし、1枚ピッタリ全面配置
     if (label.width >= pw - 5 && label.height >= ph - 5) {
       return {
@@ -43,6 +55,21 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
         gapX: 0,
         gapY: 0,
       };
+    }
+
+    // A4縦向きで規格シート設定がある場合（24面 / 44面）
+    if (!ignorePreset && pw === 210 && ph === 297) {
+      const matchedSheetLayout = label.sheetLayout || findMatchingSheetLayout(label.width, label.height);
+      if (matchedSheetLayout) {
+        return {
+          cols: matchedSheetLayout.cols,
+          rows: matchedSheetLayout.rows,
+          marginLeft: matchedSheetLayout.marginLeft,
+          marginTop: matchedSheetLayout.marginTop,
+          gapX: matchedSheetLayout.gapX,
+          gapY: matchedSheetLayout.gapY,
+        };
+      }
     }
 
     const defaultGapX = 2;
@@ -85,6 +112,29 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
     const newPw = newOrientation === 'landscape' ? 297 : 210;
     const newPh = newOrientation === 'landscape' ? 210 : 297;
     const defaults = calcLayoutDefaults(newPw, newPh);
+    setCols(defaults.cols);
+    setRows(defaults.rows);
+    setMarginLeft(defaults.marginLeft);
+    setMarginTop(defaults.marginTop);
+    setGapX(defaults.gapX);
+    setGapY(defaults.gapY);
+  };
+
+  // 特定のプリセットレイアウトを即時適用
+  const applyPresetLayout = (preset: typeof A4_SHEET_PRESETS[number]) => {
+    if (!preset.sheetLayout) return;
+    setPaperOrientation('portrait');
+    setCols(preset.sheetLayout.cols);
+    setRows(preset.sheetLayout.rows);
+    setMarginLeft(preset.sheetLayout.marginLeft);
+    setMarginTop(preset.sheetLayout.marginTop);
+    setGapX(preset.sheetLayout.gapX);
+    setGapY(preset.sheetLayout.gapY);
+  };
+
+  // 自動計算値にリセット
+  const resetToAutoLayout = () => {
+    const defaults = calcLayoutDefaults(pageWidth, pageHeight, true);
     setCols(defaults.cols);
     setRows(defaults.rows);
     setMarginLeft(defaults.marginLeft);
@@ -274,6 +324,26 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
         />
       </div>
 
+      {/* 規格フォーマット情報バナー (印刷時は非表示) */}
+      {formatName && (
+        <div className="no-print max-w-md mx-auto w-full px-4 pt-2.5 pb-0.5">
+          <div className="bg-blue-50 border border-blue-200/80 rounded-xl px-3 py-2 flex items-center justify-between shadow-2xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <div>
+                <span className="text-xs font-bold text-blue-950 block">{formatName}</span>
+                <span className="text-[10px] text-blue-700">
+                  {cols === 3 && rows === 8 ? '左余白 6mm / 上余白 12.9mm / 隙間 0mm' : cols === 4 && rows === 11 ? '左余白 8.4mm / 上余白 8.8mm / 隙間 0mm' : '市販規格シート対応'}
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold text-blue-700 bg-white px-2 py-0.5 rounded-md border border-blue-100 shrink-0">
+              規格適用中
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 設定ドロワー (印刷時は非表示) */}
       {showSettings && (
         <div className="no-print bg-white border-b border-slate-200 px-4 py-3 shadow-md max-w-md mx-auto w-full space-y-3">
@@ -284,6 +354,45 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
               {isFullA4 ? '1枚全面' : `合計 ${totalCount} 枚配置`}
             </span>
+          </div>
+
+          {/* 規格プリセットクイック適用ボタン */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
+              規格プリセットを適用
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {A4_SHEET_PRESETS.map((p) => {
+                const isActive =
+                  cols === p.sheetLayout?.cols &&
+                  rows === p.sheetLayout?.rows &&
+                  marginLeft === p.sheetLayout?.marginLeft &&
+                  marginTop === p.sheetLayout?.marginTop;
+                return (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => applyPresetLayout(p)}
+                    className={`py-1.5 px-1.5 rounded-lg text-[11px] font-bold border transition-all text-center ${
+                      isActive
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {p.formatType === 'sheet_24' ? '24面 (3×8)' : '44面 (4×11)'}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={resetToAutoLayout}
+                className="py-1.5 px-1.5 rounded-lg text-[11px] font-bold border bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200 flex items-center justify-center gap-1"
+                title="自動計算に戻す"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>自動配置</span>
+              </button>
+            </div>
           </div>
 
           {/* 用紙の向き切り替え */}
@@ -516,6 +625,11 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             <span>高画質PNG</span>
           </button>
         </div>
+
+        {/* 市販ラベル用紙印刷時のワンポイント */}
+        <p className="text-[10px] text-slate-400 text-center leading-tight pt-0.5">
+          ※ 市販の専用用紙に印刷する際は、印刷ダイアログで倍率を「100%（実際のサイズ）」に設定してください。
+        </p>
       </div>
     </div>
   );

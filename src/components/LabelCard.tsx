@@ -26,6 +26,16 @@ export const LabelCard: React.FC<LabelCardProps> = ({
     minute: '2-digit',
   });
 
+  const formatBadge = (() => {
+    if (label.formatType === 'sheet_24' || (Math.abs(label.width - 66) <= 0.2 && Math.abs(label.height - 33.9) <= 0.2)) {
+      return '24面';
+    }
+    if (label.formatType === 'sheet_44' || (Math.abs(label.width - 48.3) <= 0.2 && Math.abs(label.height - 25.4) <= 0.2)) {
+      return '44面';
+    }
+    return null;
+  })();
+
   return (
     <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
       {/* サムネイル & タップで編集 */}
@@ -44,8 +54,13 @@ export const LabelCard: React.FC<LabelCardProps> = ({
           ) : (
             <div className="text-xs text-slate-400 font-medium">プレビューなし</div>
           )}
-          <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[10px] font-medium bg-slate-900/70 text-white rounded-md">
-            {label.width}×{label.height}mm
+          <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[10px] font-medium bg-slate-900/75 text-white rounded-md flex items-center gap-1">
+            {formatBadge && (
+              <span className="bg-blue-600 text-white font-bold text-[9px] px-1 py-0.2 rounded-xs">
+                {formatBadge}
+              </span>
+            )}
+            <span>{label.width}×{label.height}mm</span>
           </span>
         </div>
 
