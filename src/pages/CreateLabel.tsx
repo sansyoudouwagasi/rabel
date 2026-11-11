@@ -60,11 +60,23 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
   );
   const [errorMessage, setErrorMessage] = useState('');
 
-  // A4フルサイズオブジェクト (ラベルの向きに連動)
-  const fullA4Size: LabelSize = getOrientedLabelSize(
-    { width: 297, height: 210, name: 'A4横 1枚全面 (297×210mm)', formatType: 'full_a4' },
-    labelOrientation
-  );
+  // A4フルサイズオブジェクト
+  const fullA4Portrait: LabelSize = {
+    width: 210,
+    height: 297,
+    name: 'A4縦 1枚全面 (210×297mm)',
+    labelOrientation: 'portrait',
+    paperOrientation: 'portrait',
+    formatType: 'full_a4',
+  };
+  const fullA4Landscape: LabelSize = {
+    width: 297,
+    height: 210,
+    name: 'A4横 1枚全面 (297×210mm)',
+    labelOrientation: 'landscape',
+    paperOrientation: 'landscape',
+    formatType: 'full_a4',
+  };
 
   const isFullA4Selected =
     !isCustom &&
@@ -72,10 +84,19 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
       (Math.max(selectedPreset.width, selectedPreset.height) === 297 &&
         Math.min(selectedPreset.width, selectedPreset.height) === 210));
 
-  // ラベル自体の向き（横向き / 縦向き）切り替え
+  // ラベル1枚の向き（landscape = 横長ラベル[用紙は縦向き], portrait = 縦長ラベル[用紙を横向きで使用]）切り替え
   const handleLabelOrientationChange = (orientation: LabelOrientation) => {
     setLabelOrientation(orientation);
-    setSelectedPreset((prev) => getOrientedLabelSize(prev, orientation));
+    // 用紙の向きも連動（横長ラベル＝用紙は縦向き、縦長ラベル＝用紙は横向き）
+    const linkedPaperOrientation = orientation === 'portrait' ? 'landscape' : 'portrait';
+    setPaperOrientation(linkedPaperOrientation);
+
+    setSelectedPreset((prev) => {
+      if (prev.formatType === 'full_a4') {
+        return linkedPaperOrientation === 'landscape' ? fullA4Landscape : fullA4Portrait;
+      }
+      return getOrientedLabelSize(prev, orientation);
+    });
 
     // カスタム寸法も向きに合わせて幅・高さを入れ替え
     const w = parseFloat(customWidth);
@@ -93,21 +114,46 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
     }
   };
 
-  // A4用紙の向き切り替え（汎用サイズ・全面用）
-  const handlePaperOrientationChange = (orientation: 'portrait' | 'landscape') => {
-    setPaperOrientation(orientation);
-    if (isFullA4Selected) {
-      setLabelOrientation(orientation);
-      setSelectedPreset(
-        getOrientedLabelSize(
-          { width: 297, height: 210, name: 'A4 1枚全面', formatType: 'full_a4' },
-          orientation
-        )
-      );
+  // A4用紙の向き切り替え（用紙を横向きにすると、24面等のラベル1枚は縦長になる！）
+  const handlePaperOrientationChange = (newPaperOrientation: 'portrait' | 'landscape') => {
+    setPaperOrientation(newPaperOrientation);
+    // A4用紙が横向き(landscape)のとき → ラベル1枚は縦長(portrait)
+    // A4用紙が縦向き(portrait)のとき → ラベル1枚は横長(landscape)
+    const targetLabelOrientation: LabelOrientation =
+      newPaperOrientation === 'landscape' ? 'portrait' : 'landscape';
+    setLabelOrientation(targetLabelOrientation);
+
+    setSelectedPreset((prev) => {
+      if (prev.formatType === 'full_a4') {
+        return newPaperOrientation === 'landscape' ? fullA4Landscape : fullA4Portrait;
+      }
+      return getOrientedLabelSize(prev, targetLabelOrientation);
+    });
+
+    // カスタム寸法も連動して入れ替え
+    const w = parseFloat(customWidth);
+    const h = parseFloat(customHeight);
+    if (!isNaN(w) && !isNaN(h)) {
+      const longSide = Math.max(w, h);
+      const shortSide = Math.min(w, h);
+      if (targetLabelOrientation === 'landscape') {
+        setCustomWidth(String(longSide));
+        setCustomHeight(String(shortSide));
+      } else {
+        setCustomWidth(String(shortSide));
+        setCustomHeight(String(longSide));
+      }
     }
   };
 
   const handlePresetSelect = (basePreset: LabelSize) => {
+    if (basePreset.formatType === 'full_a4') {
+      setSelectedPreset(basePreset);
+      setPaperOrientation(basePreset.paperOrientation || 'portrait');
+      setIsCustom(false);
+      setErrorMessage('');
+      return;
+    }
     const oriented = getOrientedLabelSize(basePreset, labelOrientation);
     setSelectedPreset(oriented);
     if (oriented.paperOrientation) {
@@ -139,15 +185,13 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
         paperOrientation,
         formatType: 'custom',
       });
+    } else if (selectedPreset.formatType === 'full_a4') {
+      onSelectSize(selectedPreset);
     } else {
       const oriented = getOrientedLabelSize(selectedPreset, labelOrientation);
       onSelectSize({
         ...oriented,
-        paperOrientation: oriented.sheetLayout
-          ? oriented.paperOrientation
-          : oriented.formatType === 'full_a4'
-          ? labelOrientation
-          : paperOrientation,
+        paperOrientation: oriented.sheetLayout ? oriented.paperOrientation : paperOrientation,
       });
     }
   };
@@ -155,6 +199,8 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
   // 現在選択されている実効サイズのプレビュー文字列
   const currentActiveWidth = isCustom ? customWidth || '?' : selectedPreset.width;
   const currentActiveHeight = isCustom ? customHeight || '?' : selectedPreset.height;
+  const isCurrentPortrait =
+    Number(currentActiveHeight) > Number(currentActiveWidth);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -169,7 +215,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
           </p>
         </div>
 
-        {/* 0. ラベル自体の向きを選ぶ (横向き / 縦向き) */}
+        {/* 0. 用紙の向き・ラベル1枚の向きを選ぶ */}
         <div className="bg-white border-2 border-blue-200 rounded-2xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -179,56 +225,68 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
                 <RectangleVertical className="w-4 h-4 text-blue-600" />
               )}
               <h2 className="text-xs font-extrabold text-slate-800 tracking-wide">
-                1. ラベル自体の向きを選ぶ
+                1. 用紙の向きとラベルの形を選ぶ
               </h2>
             </div>
             <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
-              {labelOrientation === 'landscape' ? '横向き（横長）' : '縦向き（縦長）'}
+              {labelOrientation === 'landscape'
+                ? '用紙：縦 ／ ラベル1枚：横長'
+                : '用紙：横 ／ ラベル1枚：縦長'}
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
-            {/* 横向きボタン */}
+            {/* 用紙：縦向き → ラベル1枚：横長 */}
             <button
               type="button"
               onClick={() => handleLabelOrientationChange('landscape')}
-              className={`p-3 rounded-xl border-2 text-left transition-all flex items-center gap-3 touch-manipulation ${
+              className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between gap-2 touch-manipulation ${
                 labelOrientation === 'landscape'
                   ? 'bg-blue-50/90 border-blue-600 shadow-xs ring-2 ring-blue-500/20'
                   : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
               }`}
             >
-              <div
-                className={`w-11 h-8 rounded-md border-2 flex flex-col items-center justify-center gap-0.5 shrink-0 ${
-                  labelOrientation === 'landscape'
-                    ? 'bg-white border-blue-600 text-blue-600 shadow-2xs'
-                    : 'bg-white border-slate-400 text-slate-400'
-                }`}
-              >
-                <div className="w-6 h-0.5 bg-current rounded-full" />
-                <div className="w-4 h-0.5 bg-current rounded-full opacity-70" />
+              <div className="flex items-center justify-between w-full">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-xs bg-white border border-slate-200 text-slate-600">
+                  用紙：縦向き
+                </span>
+                <div
+                  className={`w-10 h-7 rounded-xs border-2 flex flex-col items-center justify-center gap-0.5 shrink-0 ${
+                    labelOrientation === 'landscape'
+                      ? 'bg-white border-blue-600 text-blue-600 shadow-2xs'
+                      : 'bg-white border-slate-400 text-slate-400'
+                  }`}
+                >
+                  <div className="w-6 h-0.5 bg-current rounded-full" />
+                  <div className="w-4 h-0.5 bg-current rounded-full opacity-70" />
+                </div>
               </div>
-              <div className="min-w-0">
-                <div className="text-xs font-extrabold text-slate-800">横向き</div>
+              <div>
+                <div className="text-xs font-extrabold text-slate-800">
+                  ラベル1枚：横長
+                </div>
                 <div className="text-[10px] text-slate-500 leading-tight mt-0.5">
-                  横に長い標準ラベル
+                  24面(3×8)なら 66×33.9mm
                 </div>
               </div>
             </button>
 
-            {/* 縦向きボタン */}
+            {/* 用紙：横向き → ラベル1枚：縦長 */}
             <button
               type="button"
               onClick={() => handleLabelOrientationChange('portrait')}
-              className={`p-3 rounded-xl border-2 text-left transition-all flex items-center gap-3 touch-manipulation ${
+              className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between gap-2 touch-manipulation ${
                 labelOrientation === 'portrait'
                   ? 'bg-blue-50/90 border-blue-600 shadow-xs ring-2 ring-blue-500/20'
                   : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
               }`}
             >
-              <div className="w-11 h-9 flex items-center justify-center shrink-0">
+              <div className="flex items-center justify-between w-full">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-xs bg-blue-100/80 border border-blue-200 text-blue-800">
+                  用紙：横向き
+                </span>
                 <div
-                  className={`w-7 h-9 rounded-md border-2 flex items-center justify-center gap-0.5 ${
+                  className={`w-7 h-10 rounded-xs border-2 flex items-center justify-center gap-0.5 shrink-0 ${
                     labelOrientation === 'portrait'
                       ? 'bg-white border-blue-600 text-blue-600 shadow-2xs'
                       : 'bg-white border-slate-400 text-slate-400'
@@ -238,10 +296,12 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
                   <div className="w-0.5 h-6 bg-current rounded-full" />
                 </div>
               </div>
-              <div className="min-w-0">
-                <div className="text-xs font-extrabold text-slate-800">縦向き</div>
+              <div>
+                <div className="text-xs font-extrabold text-slate-800">
+                  ラベル1枚：縦長
+                </div>
                 <div className="text-[10px] text-slate-500 leading-tight mt-0.5">
-                  縦長・縦書きにも最適
+                  24面を横向き使用 → 33.9×66mm
                 </div>
               </div>
             </button>
@@ -319,17 +379,23 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
                           {preset.width} × {preset.height} mm
                         </span>
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                          {is24 ? '24面' : '44面'} ({isPortrait ? '縦向き' : '横向き'})
+                          {is24
+                            ? isPortrait
+                              ? '24面・ラベル縦長 (用紙横 8×3)'
+                              : '24面・ラベル横長 (用紙縦 3×8)'
+                            : isPortrait
+                            ? '44面・ラベル縦長 (用紙横 11×4)'
+                            : '44面・ラベル横長 (用紙縦 4×11)'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 mt-1 font-medium">
                         {is24
                           ? isPortrait
-                            ? '縦長ラベル編集 (33.9×66mm) / 24面用紙対応'
-                            : '上余白 12.9mm / 左余白 6mm (3列×8行)'
+                            ? '用紙を横向きで使用 → ラベル1枚は縦長 (横33.9×縦66mm)'
+                            : '用紙を縦向きで使用 → ラベル1枚は横長 (横66×縦33.9mm)'
                           : isPortrait
-                          ? '縦長ラベル編集 (25.4×48.3mm) / 44面用紙対応'
-                          : '上余白 8.8mm / 左余白 8.4mm (4列×11行)'}
+                          ? '用紙を横向きで使用 → ラベル1枚は縦長 (横25.4×縦48.3mm)'
+                          : '用紙を縦向きで使用 → ラベル1枚は横長 (横48.3×縦25.4mm)'}
                       </p>
                       <p className="text-[11px] text-slate-400 mt-0.5">
                         {is24
@@ -430,47 +496,57 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
             A4用紙 1枚全面で作成
           </h2>
 
-          <button
-            type="button"
-            onClick={() => handlePresetSelect(fullA4Size)}
-            className={`w-full flex items-center justify-between p-4 rounded-2xl border text-left transition-all min-h-[56px] touch-manipulation ${
-              isFullA4Selected
-                ? 'bg-blue-50/60 border-blue-500 shadow-xs ring-2 ring-blue-500/20'
-                : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="border-2 border-dashed border-blue-400 bg-blue-50/50 rounded-xs flex items-center justify-center shrink-0 transition-all"
-                style={{
-                  width: labelOrientation === 'landscape' ? '48px' : '34px',
-                  height: labelOrientation === 'landscape' ? '34px' : '48px',
-                }}
-              >
-                <span className="text-[9px] font-bold text-blue-600">A4</span>
-              </div>
-              <div>
-                <span className="text-base font-bold text-slate-800">
-                  {fullA4Size.width} × {fullA4Size.height} mm
-                </span>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {labelOrientation === 'landscape'
-                    ? 'A4横 1枚全面 (POP・チラシ・案内板)'
-                    : 'A4縦 1枚全面 (ポスター・メニュー表)'}
-                </p>
-              </div>
-            </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[fullA4Portrait, fullA4Landscape].map((a4Preset) => {
+              const isA4Landscape = a4Preset.width > a4Preset.height;
+              const isThisSelected =
+                isFullA4Selected &&
+                selectedPreset.width === a4Preset.width &&
+                selectedPreset.height === a4Preset.height;
 
-            <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center border ${
-                isFullA4Selected
-                  ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'border-slate-300 bg-white'
-              }`}
-            >
-              {isFullA4Selected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-            </div>
-          </button>
+              return (
+                <button
+                  key={a4Preset.name}
+                  type="button"
+                  onClick={() => handlePresetSelect(a4Preset)}
+                  className={`flex flex-col justify-between p-3.5 rounded-2xl border text-left transition-all touch-manipulation ${
+                    isThisSelected
+                      ? 'bg-blue-50/60 border-blue-500 shadow-xs ring-2 ring-blue-500/20'
+                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full mb-2">
+                    <div
+                      className="border-2 border-dashed border-blue-400 bg-blue-50/50 rounded-xs flex items-center justify-center shrink-0"
+                      style={{
+                        width: isA4Landscape ? '42px' : '30px',
+                        height: isA4Landscape ? '30px' : '42px',
+                      }}
+                    >
+                      <span className="text-[9px] font-bold text-blue-600">A4</span>
+                    </div>
+                    <div
+                      className={`w-5 h-5 rounded-full flex items-center justify-center border ${
+                        isThisSelected
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'border-slate-300 bg-white'
+                      }`}
+                    >
+                      {isThisSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-800">
+                      {isA4Landscape ? 'A4横 全面' : 'A4縦 全面'}
+                    </div>
+                    <div className="text-[11px] font-bold text-blue-600 mt-0.5">
+                      {a4Preset.width} × {a4Preset.height} mm
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 4. カスタムサイズ */}
@@ -565,15 +641,17 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
           </div>
         </div>
 
-        {/* 5. A4 用紙の向き選択（汎用サイズ・カスタム寸法の印刷用） */}
+        {/* 5. A4 用紙の向き選択（ラベル1枚の向きと完全連動） */}
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-blue-600" />
-              <span className="text-xs font-bold text-slate-700">印刷するA4用紙の向き</span>
+              <span className="text-xs font-bold text-slate-700">A4用紙の向き (ラベルの向きと連動)</span>
             </div>
             <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-              {paperOrientation === 'landscape' ? 'A4 横向き (297×210mm)' : 'A4 縦向き (210×297mm)'}
+              {paperOrientation === 'landscape'
+                ? '用紙：横向き → ラベル1枚：縦長'
+                : '用紙：縦向き → ラベル1枚：横長'}
             </span>
           </div>
 
@@ -588,7 +666,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
               }`}
             >
               <span className="w-3.5 h-4.5 border-2 border-current rounded-xs shrink-0" />
-              <span>縦向き (210×297)</span>
+              <span>用紙：縦 (ラベル横長)</span>
             </button>
 
             <button
@@ -601,7 +679,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
               }`}
             >
               <span className="w-4.5 h-3.5 border-2 border-current rounded-xs shrink-0" />
-              <span>横向き (297×210)</span>
+              <span>用紙：横 (ラベル縦長)</span>
             </button>
           </div>
         </div>
@@ -622,7 +700,7 @@ export const CreateLabel: React.FC<CreateLabelProps> = ({
             className="w-full h-13 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-md active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-base"
           >
             <span>
-              {labelOrientation === 'portrait' ? '縦向き' : '横向き'} ({currentActiveWidth}×{currentActiveHeight}mm) でデザインに進む
+              ラベル1枚：{isCurrentPortrait ? '縦長' : '横長'} ({currentActiveWidth}×{currentActiveHeight}mm) で進む
             </span>
           </button>
         </div>

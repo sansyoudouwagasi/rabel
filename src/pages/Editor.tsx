@@ -90,11 +90,16 @@ export const Editor: React.FC<EditorProps> = ({
   const [activeBottomPanel, setActiveBottomPanel] = useState<'none' | 'text_menu' | 'shape_menu' | 'bg'>('none');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isOrientationModalOpen, setIsOrientationModalOpen] = useState<boolean>(
+    initialSize.width !== initialSize.height
+  );
+  const [hasUserEdited, setHasUserEdited] = useState<boolean>(Boolean(existingLabel));
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [, setLastSavedAt] = useState<number | null>(existingLabel?.updatedAt || null);
 
   // 編集中にラベルの向き（横向き⇔縦向き）を切り替えた際のキャンバス引き継ぎ用Ref
   const pendingOrientationJsonRef = useRef<string | null>(null);
+  const shouldReapplyTemplateRef = useRef<boolean>(false);
 
   const handleDeleteCurrentLabel = async () => {
     if (autoSaveTimer.current) {
@@ -208,6 +213,7 @@ export const Editor: React.FC<EditorProps> = ({
 
   // オブジェクト変更リスナー
   const handleObjectModified = useCallback(() => {
+    setHasUserEdited(true);
     pushHistory();
     triggerAutoSave();
   }, [pushHistory, triggerAutoSave]);
@@ -215,10 +221,23 @@ export const Editor: React.FC<EditorProps> = ({
   // ラベル自体の向き（横向き / 縦向き）を切り替え
   const handleSwitchLabelOrientation = (targetOrientation: LabelOrientation) => {
     const currentOrientation: LabelOrientation = isPortraitLabel ? 'portrait' : 'landscape';
-    if (targetOrientation === currentOrientation) return;
+    if (targetOrientation === currentOrientation) {
+      setIsOrientationModalOpen(false);
+      return;
+    }
 
     const canvas = canvasRef.current;
     const nextSize = getOrientedLabelSize(currentSize, targetOrientation);
+
+    // 新規作成直後でまだ手動編集していない場合は、新しい向きのキャンバスでテンプレート/白紙を初期生成し直す
+    if (!hasUserEdited && !existingLabel) {
+      shouldReapplyTemplateRef.current = true;
+      pendingOrientationJsonRef.current = null;
+      setSelectedObject(null);
+      setCurrentSize(nextSize);
+      setIsOrientationModalOpen(false);
+      return;
+    }
 
     if (canvas) {
       const { width: oldW, height: oldH } = getLogicalCanvasSize(canvas);
@@ -268,6 +287,7 @@ export const Editor: React.FC<EditorProps> = ({
 
     setSelectedObject(null);
     setCurrentSize(nextSize);
+    setIsOrientationModalOpen(false);
   };
 
   // Undo 実行
@@ -325,7 +345,7 @@ export const Editor: React.FC<EditorProps> = ({
         return;
       }
 
-      if (existingLabel && existingLabel.canvasJson) {
+      if (existingLabel && existingLabel.canvasJson && !shouldReapplyTemplateRef.current) {
         try {
           canvas.loadFromJSON(JSON.parse(existingLabel.canvasJson)).then(() => {
             canvas.renderAll();
@@ -335,11 +355,15 @@ export const Editor: React.FC<EditorProps> = ({
           console.error('Failed to load canvas json', err);
         }
       } else if (selectedTemplate) {
+        shouldReapplyTemplateRef.current = false;
         // テンプレート適用
         selectedTemplate.apply(canvas, logicalW, logicalH);
         canvas.renderAll();
+        historyStack.current = [];
+        historyIndex.current = -1;
         pushHistory();
       } else {
+        shouldReapplyTemplateRef.current = false;
         // 白紙新規作成時のデフォルトテキスト
         const base = Math.min(logicalW, logicalH);
         const text = new fabric.IText('テキスト', {
@@ -355,6 +379,8 @@ export const Editor: React.FC<EditorProps> = ({
         canvas.add(text);
         canvas.setActiveObject(text);
         canvas.renderAll();
+        historyStack.current = [];
+        historyIndex.current = -1;
         pushHistory();
       }
     },
@@ -750,12 +776,12 @@ export const Editor: React.FC<EditorProps> = ({
         />
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* ラベル自体の向き（横向き / 縦向き）切り替えトグル */}
+          {/* ラベル自体の向き（横長 / 縦長）切り替えトグル */}
           {currentSize.width !== currentSize.height && (
             <div
               className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200"
               role="group"
-              aria-label="ラベルの向き"
+              aria-label="ラベル1枚の向き"
             >
               <button
                 type="button"
@@ -765,10 +791,10 @@ export const Editor: React.FC<EditorProps> = ({
                     ? 'bg-white text-blue-600 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="横向きラベルにする"
+                title="用紙縦向き / ラベル1枚は横長"
               >
                 <RectangleHorizontal className="w-3.5 h-3.5" />
-                <span>横向き</span>
+                <span>ラベル横長</span>
               </button>
               <button
                 type="button"
@@ -778,10 +804,10 @@ export const Editor: React.FC<EditorProps> = ({
                     ? 'bg-white text-blue-600 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
-                title="縦向きラベルにする"
+                title="用紙横向き / ラベル1枚は縦長"
               >
                 <RectangleVertical className="w-3.5 h-3.5" />
-                <span>縦向き</span>
+                <span>ラベル縦長</span>
               </button>
             </div>
           )}
@@ -1082,6 +1108,99 @@ export const Editor: React.FC<EditorProps> = ({
         onConfirm={handleDeleteCurrentLabel}
         onCancel={() => setIsDeleteModalOpen(false)}
       />
+
+      {/* ラベル編集開始時の「横長ラベル(用紙縦) / 縦長ラベル(用紙横)」選択モーダル */}
+      {isOrientationModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="text-center space-y-1">
+              <span className="inline-block text-[11px] font-extrabold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
+                編集するラベルの形を確認
+              </span>
+              <h2 className="text-base font-extrabold text-slate-800">
+                どちらの向きで編集しますか？
+              </h2>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                用紙を横向きにして使う場合（24面等）は、ラベル1枚が「縦長」になります。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              {/* 用紙：縦向き → ラベル1枚：横長 */}
+              <button
+                type="button"
+                onClick={() => handleSwitchLabelOrientation('landscape')}
+                className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-between gap-2.5 transition-all active:scale-95 touch-manipulation ${
+                  !isPortraitLabel
+                    ? 'bg-blue-50/90 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-slate-50 border-slate-200 hover:border-blue-400 hover:bg-blue-50/30'
+                }`}
+              >
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">
+                  用紙：縦向き (3×8等)
+                </span>
+                <div className="h-14 flex items-center justify-center">
+                  <div
+                    className={`w-16 h-11 rounded-lg border-2 flex flex-col items-center justify-center gap-1 shadow-2xs ${
+                      !isPortraitLabel
+                        ? 'bg-white border-blue-600 text-blue-600'
+                        : 'bg-white border-slate-400 text-slate-500'
+                    }`}
+                  >
+                    <div className="w-9 h-1 bg-current rounded-full" />
+                    <div className="w-6 h-1 bg-current rounded-full opacity-60" />
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm font-extrabold text-slate-800">ラベル1枚：横長</div>
+                  <div className="text-[11px] font-bold text-blue-600 mt-0.5">
+                    {Math.max(currentSize.width, currentSize.height)} ×{' '}
+                    {Math.min(currentSize.width, currentSize.height)} mm
+                  </div>
+                </div>
+              </button>
+
+              {/* 用紙：横向き → ラベル1枚：縦長 */}
+              <button
+                type="button"
+                onClick={() => handleSwitchLabelOrientation('portrait')}
+                className={`p-4 rounded-2xl border-2 flex flex-col items-center justify-between gap-2.5 transition-all active:scale-95 touch-manipulation ${
+                  isPortraitLabel
+                    ? 'bg-blue-50/90 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
+                    : 'bg-slate-50 border-slate-200 hover:border-blue-400 hover:bg-blue-50/30'
+                }`}
+              >
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 border border-blue-200 text-blue-800">
+                  用紙：横向き (8×3等)
+                </span>
+                <div className="h-14 flex items-center justify-center">
+                  <div
+                    className={`w-11 h-16 rounded-lg border-2 flex items-center justify-center gap-1 shadow-2xs ${
+                      isPortraitLabel
+                        ? 'bg-white border-blue-600 text-blue-600'
+                        : 'bg-white border-slate-400 text-slate-500'
+                    }`}
+                  >
+                    <div className="w-1 h-8 bg-current rounded-full opacity-60" />
+                    <div className="w-1 h-10 bg-current rounded-full" />
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm font-extrabold text-slate-800">ラベル1枚：縦長</div>
+                  <div className="text-[11px] font-bold text-blue-600 mt-0.5">
+                    {Math.min(currentSize.width, currentSize.height)} ×{' '}
+                    {Math.max(currentSize.width, currentSize.height)} mm
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-400 text-center">
+              ※ 編集画面の上部バーから、あとでいつでも切り替えられます
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

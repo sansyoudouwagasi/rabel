@@ -60,7 +60,7 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
       <Header title="向きとデザインを選ぶ" showBack onBack={onBack} />
 
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* ラベルの向き（横向き / 縦向き）選択カード */}
+        {/* ラベルの向き（横長 / 縦長）選択カード */}
         <div className="bg-white border-2 border-blue-200 rounded-2xl p-3.5 shadow-xs space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -70,11 +70,11 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
                 <RectangleHorizontal className="w-4 h-4 text-blue-600" />
               )}
               <span className="text-xs font-extrabold text-slate-800">
-                編集するラベルの向き
+                編集するラベル1枚の向き
               </span>
             </div>
             <span className="text-[11px] font-extrabold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
-              {isPortrait ? '縦向き' : '横向き'} ({currentSize.width} × {currentSize.height} mm)
+              {isPortrait ? 'ラベル縦長 (用紙横)' : 'ラベル横長 (用紙縦)'} ({currentSize.width}×{currentSize.height}mm)
             </span>
           </div>
 
@@ -99,7 +99,12 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
                 <div className="w-3 h-0.5 bg-current rounded-full opacity-70" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold leading-tight">横向きで編集</div>
+                <div className="text-[10px] font-bold text-slate-500 leading-none">
+                  用紙：縦向き
+                </div>
+                <div className="text-xs font-extrabold leading-tight mt-0.5">
+                  ラベル：横長
+                </div>
                 <div className="text-[10px] opacity-80 font-semibold mt-0.5">
                   {landscapeSize.width} × {landscapeSize.height} mm
                 </div>
@@ -128,7 +133,12 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
                 </div>
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-extrabold leading-tight">縦向きで編集</div>
+                <div className="text-[10px] font-bold text-blue-600 leading-none">
+                  用紙：横向き
+                </div>
+                <div className="text-xs font-extrabold leading-tight mt-0.5">
+                  ラベル：縦長
+                </div>
                 <div className="text-[10px] opacity-80 font-semibold mt-0.5">
                   {portraitSize.width} × {portraitSize.height} mm
                 </div>
