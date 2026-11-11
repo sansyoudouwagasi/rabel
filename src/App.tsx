@@ -55,41 +55,41 @@ export const App: React.FC = () => {
   };
 
   // テンプレート選択完了: テンプレート選択 -> エディタ
-  const handleSelectTemplate = (template: LabelTemplate | null) => {
+  const handleSelectTemplate = (template: LabelTemplate | null, finalSize?: LabelSize) => {
+    const targetSize = finalSize || selectedSize;
+    setSelectedSize(targetSize);
     setEditingLabel({
-      size: selectedSize,
+      size: targetSize,
       template,
     });
     setViewState({
       type: 'editor',
-      initialSize: selectedSize,
+      initialSize: targetSize,
       templateId: template?.id,
     });
   };
 
   // 既存ラベルの編集開始
   const handleEditLabel = (label: SavedLabel) => {
+    const labelOrientation =
+      label.labelOrientation || (label.height > label.width ? 'portrait' : 'landscape');
+    const sizeObj: LabelSize = {
+      width: label.width,
+      height: label.height,
+      name: `${label.width}×${label.height}mm`,
+      labelOrientation,
+      paperOrientation: label.paperOrientation,
+      sheetLayout: label.sheetLayout,
+      formatType: label.formatType,
+    };
     setEditingLabel({
-      size: {
-        width: label.width,
-        height: label.height,
-        name: `${label.width}×${label.height}mm`,
-        paperOrientation: label.paperOrientation,
-        sheetLayout: label.sheetLayout,
-        formatType: label.formatType,
-      },
+      size: sizeObj,
       savedLabel: label,
     });
     setViewState({
       type: 'editor',
       labelId: label.id,
-      initialSize: {
-        width: label.width,
-        height: label.height,
-        paperOrientation: label.paperOrientation,
-        sheetLayout: label.sheetLayout,
-        formatType: label.formatType,
-      },
+      initialSize: sizeObj,
     });
   };
 
@@ -122,6 +122,7 @@ export const App: React.FC = () => {
       case 'create_size':
         return (
           <CreateLabel
+            initialSize={selectedSize}
             onBack={() => setViewState({ type: 'home' })}
             onSelectSize={handleSelectSize}
           />
@@ -132,6 +133,10 @@ export const App: React.FC = () => {
           <TemplateSelect
             size={viewState.size}
             onBack={() => setViewState({ type: 'create_size' })}
+            onChangeSize={(newSize) => {
+              setSelectedSize(newSize);
+              setViewState({ type: 'create_template', size: newSize });
+            }}
             onSelectTemplate={handleSelectTemplate}
           />
         );
@@ -150,6 +155,7 @@ export const App: React.FC = () => {
                 size: {
                   width: saved.width,
                   height: saved.height,
+                  labelOrientation: saved.labelOrientation,
                   paperOrientation: saved.paperOrientation,
                   sheetLayout: saved.sheetLayout,
                   formatType: saved.formatType,

@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import type { SavedLabel } from '../types/label';
-import { findMatchingSheetLayout, A4_SHEET_PRESETS } from '../types/label';
+import {
+  findMatchingSheetLayout,
+  A4_SHEET_PRESETS,
+  isSheet24Size,
+  isSheet44Size,
+  getOrientedLabelSize,
+} from '../types/label';
 import { Header } from '../components/Header';
 import { exportA4SheetPdf, exportSingleLabelPdf, type SheetLayoutOptions } from '../utils/exportPdf';
 import { Printer, Download, FileDown, Sliders, Image as ImageIcon, CheckCircle2, RotateCcw } from 'lucide-react';
@@ -11,8 +17,18 @@ interface PrintPreviewProps {
 }
 
 export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => {
-  // ラベル作成時の用紙向き設定、またはラベル幅が210mmを超える場合は横向きを初期値にする
-  const initialOrientation = label.paperOrientation || (label.width > 210 ? 'landscape' : 'portrait');
+  const is24 = isSheet24Size(label.width, label.height, label.formatType);
+  const is44 = isSheet44Size(label.width, label.height, label.formatType);
+  const isPortraitLabel = label.height > label.width;
+
+  // 24面・44面規格シートで縦向きラベルの場合はA4横向き配置(8×3列 / 11×4列)で物理シートと一致させる
+  const initialOrientation: 'portrait' | 'landscape' =
+    is24 || is44
+      ? isPortraitLabel
+        ? 'landscape'
+        : 'portrait'
+      : label.paperOrientation || (label.width > 210 ? 'landscape' : 'portrait');
+
   const [paperOrientation, setPaperOrientation] = useState<'portrait' | 'landscape'>(initialOrientation);
 
   const pageWidth = paperOrientation === 'landscape' ? 297 : 210;
@@ -34,14 +50,18 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
   // A4規格（24面 / 44面）に一致しているか判定
   const formatName = useMemo(() => {
-    if (label.formatType === 'sheet_24' || (Math.abs(label.width - 66) <= 0.2 && Math.abs(label.height - 33.9) <= 0.2)) {
-      return 'A4 24面規格 (66×33.9mm / 3×8列)';
+    if (is24) {
+      return isPortraitLabel
+        ? 'A4 24面規格・縦向き (33.9×66mm / 8×3列)'
+        : 'A4 24面規格 (66×33.9mm / 3×8列)';
     }
-    if (label.formatType === 'sheet_44' || (Math.abs(label.width - 48.3) <= 0.2 && Math.abs(label.height - 25.4) <= 0.2)) {
-      return 'A4 44面規格 (48.3×25.4mm / 4×11列)';
+    if (is44) {
+      return isPortraitLabel
+        ? 'A4 44面規格・縦向き (25.4×48.3mm / 11×4列)'
+        : 'A4 44面規格 (48.3×25.4mm / 4×11列)';
     }
     return null;
-  }, [label.formatType, label.width, label.height]);
+  }, [is24, is44, isPortraitLabel]);
 
   // 用紙サイズ・ラベルサイズに応じた自動面付け初期値の算出関数
   const calcLayoutDefaults = (pw: number, ph: number, ignorePreset: boolean = false) => {
@@ -57,10 +77,13 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
       };
     }
 
-    // A4縦向きで規格シート設定がある場合（24面 / 44面）
-    if (!ignorePreset && pw === 210 && ph === 297) {
-      const matchedSheetLayout = label.sheetLayout || findMatchingSheetLayout(label.width, label.height);
-      if (matchedSheetLayout) {
+    // 規格シート設定がある場合（24面 / 44面の横向き・縦向き）
+    if (!ignorePreset) {
+      const matchedSheetLayout = findMatchingSheetLayout(label.width, label.height);
+      const isExpectedPaper =
+        (!isPortraitLabel && pw === 210 && ph === 297) ||
+        (isPortraitLabel && pw === 297 && ph === 210);
+      if (matchedSheetLayout && isExpectedPaper) {
         return {
           cols: matchedSheetLayout.cols,
           rows: matchedSheetLayout.rows,
@@ -122,14 +145,15 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
 
   // 特定のプリセットレイアウトを即時適用
   const applyPresetLayout = (preset: typeof A4_SHEET_PRESETS[number]) => {
-    if (!preset.sheetLayout) return;
-    setPaperOrientation('portrait');
-    setCols(preset.sheetLayout.cols);
-    setRows(preset.sheetLayout.rows);
-    setMarginLeft(preset.sheetLayout.marginLeft);
-    setMarginTop(preset.sheetLayout.marginTop);
-    setGapX(preset.sheetLayout.gapX);
-    setGapY(preset.sheetLayout.gapY);
+    const oriented = getOrientedLabelSize(preset, isPortraitLabel ? 'portrait' : 'landscape');
+    if (!oriented.sheetLayout) return;
+    setPaperOrientation(oriented.paperOrientation || 'portrait');
+    setCols(oriented.sheetLayout.cols);
+    setRows(oriented.sheetLayout.rows);
+    setMarginLeft(oriented.sheetLayout.marginLeft);
+    setMarginTop(oriented.sheetLayout.marginTop);
+    setGapX(oriented.sheetLayout.gapX);
+    setGapY(oriented.sheetLayout.gapY);
   };
 
   // 自動計算値にリセット
@@ -363,11 +387,12 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
             </label>
             <div className="grid grid-cols-3 gap-1.5">
               {A4_SHEET_PRESETS.map((p) => {
+                const oriented = getOrientedLabelSize(p, isPortraitLabel ? 'portrait' : 'landscape');
                 const isActive =
-                  cols === p.sheetLayout?.cols &&
-                  rows === p.sheetLayout?.rows &&
-                  marginLeft === p.sheetLayout?.marginLeft &&
-                  marginTop === p.sheetLayout?.marginTop;
+                  cols === oriented.sheetLayout?.cols &&
+                  rows === oriented.sheetLayout?.rows &&
+                  marginLeft === oriented.sheetLayout?.marginLeft &&
+                  marginTop === oriented.sheetLayout?.marginTop;
                 return (
                   <button
                     key={p.name}
@@ -379,7 +404,13 @@ export const PrintPreview: React.FC<PrintPreviewProps> = ({ label, onBack }) => 
                         : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                     }`}
                   >
-                    {p.formatType === 'sheet_24' ? '24面 (3×8)' : '44面 (4×11)'}
+                    {p.formatType === 'sheet_24'
+                      ? isPortraitLabel
+                        ? '24面 (8×3)'
+                        : '24面 (3×8)'
+                      : isPortraitLabel
+                      ? '44面 (11×4)'
+                      : '44面 (4×11)'}
                   </button>
                 );
               })}

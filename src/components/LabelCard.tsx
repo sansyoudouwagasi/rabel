@@ -1,5 +1,5 @@
 import React from 'react';
-import type { SavedLabel } from '../types/label';
+import { isSheet24Size, isSheet44Size, type SavedLabel } from '../types/label';
 import { Copy, Trash2, Printer, Edit3 } from 'lucide-react';
 
 interface LabelCardProps {
@@ -27,14 +27,16 @@ export const LabelCard: React.FC<LabelCardProps> = ({
   });
 
   const formatBadge = (() => {
-    if (label.formatType === 'sheet_24' || (Math.abs(label.width - 66) <= 0.2 && Math.abs(label.height - 33.9) <= 0.2)) {
+    if (isSheet24Size(label.width, label.height, label.formatType)) {
       return '24面';
     }
-    if (label.formatType === 'sheet_44' || (Math.abs(label.width - 48.3) <= 0.2 && Math.abs(label.height - 25.4) <= 0.2)) {
+    if (isSheet44Size(label.width, label.height, label.formatType)) {
       return '44面';
     }
     return null;
   })();
+
+  const isPortrait = label.height > label.width;
 
   return (
     <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
@@ -60,7 +62,9 @@ export const LabelCard: React.FC<LabelCardProps> = ({
                 {formatBadge}
               </span>
             )}
-            <span>{label.width}×{label.height}mm</span>
+            <span>
+              {label.width}×{label.height}mm ({isPortrait ? '縦' : '横'})
+            </span>
           </span>
         </div>
 

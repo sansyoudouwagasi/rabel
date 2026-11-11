@@ -1,6 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import * as fabric from 'fabric';
-import type { LabelSize, SavedLabel } from '../types/label';
+import {
+  getOrientedLabelSize,
+  type LabelSize,
+  type LabelOrientation,
+  type SavedLabel,
+} from '../types/label';
 import type { Product } from '../types/product';
 import { Header } from '../components/Header';
 import { LabelCanvas } from '../components/Editor/LabelCanvas';
@@ -31,6 +36,8 @@ import {
   Check,
   Printer,
   ChevronDown,
+  RectangleHorizontal,
+  RectangleVertical,
 } from 'lucide-react';
 
 import { TEMPLATES } from '../templates/templates';
@@ -45,6 +52,15 @@ interface EditorProps {
   onOpenPrint?: (label: SavedLabel) => void;
 }
 
+// ズーム倍率を除いた論理キャンバスサイズ（300 DPI基準座標）を取得
+function getLogicalCanvasSize(canvas: fabric.Canvas): { width: number; height: number } {
+  const zoom = canvas.getZoom() || 1;
+  return {
+    width: Math.round((canvas.width || 300) / zoom),
+    height: Math.round((canvas.height || 200) / zoom),
+  };
+}
+
 export const Editor: React.FC<EditorProps> = ({
   initialSize,
   existingLabel,
@@ -54,6 +70,10 @@ export const Editor: React.FC<EditorProps> = ({
   onOpenPrint,
 }) => {
   const selectedTemplate = templateId ? TEMPLATES.find((t) => t.id === templateId) : null;
+
+  const [currentSize, setCurrentSize] = useState<LabelSize>(initialSize);
+  const isPortraitLabel =
+    currentSize.labelOrientation === 'portrait' || currentSize.height > currentSize.width;
 
   const [labelId] = useState(
     existingLabel?.id || 'label_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)
@@ -72,6 +92,9 @@ export const Editor: React.FC<EditorProps> = ({
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [, setLastSavedAt] = useState<number | null>(existingLabel?.updatedAt || null);
+
+  // 編集中にラベルの向き（横向き⇔縦向き）を切り替えた際のキャンバス引き継ぎ用Ref
+  const pendingOrientationJsonRef = useRef<string | null>(null);
 
   const handleDeleteCurrentLabel = async () => {
     if (autoSaveTimer.current) {
@@ -126,9 +149,11 @@ export const Editor: React.FC<EditorProps> = ({
 
   // 保存処理 (手動 & 自動デバウンス)
   const performSave = useCallback(
-    async (silent: boolean = false) => {
+    async (silent: boolean = false, sizeOverride?: LabelSize) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+
+      const targetSize = sizeOverride || currentSize;
 
       try {
         const zoom = canvas.getZoom();
@@ -141,16 +166,19 @@ export const Editor: React.FC<EditorProps> = ({
         const data: SavedLabel = {
           id: labelId,
           name: labelName.trim() || '名称未設定ラベル',
-          width: initialSize.width,
-          height: initialSize.height,
+          width: targetSize.width,
+          height: targetSize.height,
           createdAt: existingLabel?.createdAt || now,
           updatedAt: now,
           backgroundColor: backgroundColor,
           canvasJson: JSON.stringify(canvas.toObject(['isVertical', 'rawText'])),
           thumbnailUrl,
-          paperOrientation: existingLabel?.paperOrientation || initialSize.paperOrientation,
-          sheetLayout: existingLabel?.sheetLayout || initialSize.sheetLayout,
-          formatType: existingLabel?.formatType || initialSize.formatType,
+          labelOrientation:
+            targetSize.labelOrientation ||
+            (targetSize.height > targetSize.width ? 'portrait' : 'landscape'),
+          paperOrientation: targetSize.paperOrientation || existingLabel?.paperOrientation,
+          sheetLayout: targetSize.sheetLayout || existingLabel?.sheetLayout,
+          formatType: targetSize.formatType || existingLabel?.formatType,
         };
 
         await saveLabel(data);
@@ -165,7 +193,7 @@ export const Editor: React.FC<EditorProps> = ({
         console.error('Failed to save label', err);
       }
     },
-    [labelId, labelName, initialSize, existingLabel, backgroundColor, onSaved]
+    [labelId, labelName, currentSize, existingLabel, backgroundColor, onSaved]
   );
 
   // 自動保存デバウンス (1.5秒)
@@ -183,6 +211,64 @@ export const Editor: React.FC<EditorProps> = ({
     pushHistory();
     triggerAutoSave();
   }, [pushHistory, triggerAutoSave]);
+
+  // ラベル自体の向き（横向き / 縦向き）を切り替え
+  const handleSwitchLabelOrientation = (targetOrientation: LabelOrientation) => {
+    const currentOrientation: LabelOrientation = isPortraitLabel ? 'portrait' : 'landscape';
+    if (targetOrientation === currentOrientation) return;
+
+    const canvas = canvasRef.current;
+    const nextSize = getOrientedLabelSize(currentSize, targetOrientation);
+
+    if (canvas) {
+      const { width: oldW, height: oldH } = getLogicalCanvasSize(canvas);
+      const newW = oldH;
+      const newH = oldW;
+
+      // キャンバス内の各オブジェクトを新しい縦横比率に合わせて再配置
+      canvas.getObjects().forEach((obj) => {
+        // 外枠Rect（枠線テンプレートなど）の判定
+        if (
+          obj instanceof fabric.Rect &&
+          obj.fill === 'transparent' &&
+          (obj.width || 0) >= oldW * 0.75 &&
+          (obj.height || 0) >= oldH * 0.75
+        ) {
+          const padX = obj.left || 16;
+          const padY = obj.top || 16;
+          obj.set({
+            width: Math.max(20, newW - padX * 2),
+            height: Math.max(20, newH - padY * 2),
+          });
+        } else if (
+          obj instanceof fabric.Rect &&
+          Math.abs(obj.left || 0) <= 2 &&
+          (obj.width || 0) >= oldW * 0.95
+        ) {
+          // 横幅いっぱいの帯Rect
+          obj.set({
+            left: 0,
+            top: ((obj.top || 0) / oldH) * newH,
+            width: newW,
+            height: ((obj.height || 0) / oldH) * newH,
+          });
+        } else {
+          obj.set({
+            left: Math.round(((obj.left || 0) / oldW) * newW),
+            top: Math.round(((obj.top || 0) / oldH) * newH),
+          });
+        }
+        obj.setCoords();
+      });
+
+      pendingOrientationJsonRef.current = JSON.stringify(
+        canvas.toObject(['isVertical', 'rawText'])
+      );
+    }
+
+    setSelectedObject(null);
+    setCurrentSize(nextSize);
+  };
 
   // Undo 実行
   const handleUndo = async () => {
@@ -218,6 +304,26 @@ export const Editor: React.FC<EditorProps> = ({
   const handleCanvasReady = useCallback(
     (canvas: fabric.Canvas) => {
       canvasRef.current = canvas;
+      const { width: logicalW, height: logicalH } = getLogicalCanvasSize(canvas);
+
+      // 編集中に横向き⇔縦向きを切り替えた直後の復元
+      if (pendingOrientationJsonRef.current) {
+        const jsonStr = pendingOrientationJsonRef.current;
+        pendingOrientationJsonRef.current = null;
+        canvas
+          .loadFromJSON(JSON.parse(jsonStr))
+          .then(() => {
+            canvas.renderAll();
+            historyStack.current = [];
+            historyIndex.current = -1;
+            pushHistory();
+            triggerAutoSave();
+          })
+          .catch((err) => {
+            console.error('Failed to restore oriented canvas json', err);
+          });
+        return;
+      }
 
       if (existingLabel && existingLabel.canvasJson) {
         try {
@@ -230,15 +336,16 @@ export const Editor: React.FC<EditorProps> = ({
         }
       } else if (selectedTemplate) {
         // テンプレート適用
-        selectedTemplate.apply(canvas, canvas.width || 300, canvas.height || 200);
+        selectedTemplate.apply(canvas, logicalW, logicalH);
         canvas.renderAll();
         pushHistory();
       } else {
         // 白紙新規作成時のデフォルトテキスト
+        const base = Math.min(logicalW, logicalH);
         const text = new fabric.IText('テキスト', {
-          left: (canvas.width || 300) / 2,
-          top: (canvas.height || 200) / 2,
-          fontSize: Math.round((canvas.height || 200) * 0.14) || 36,
+          left: logicalW / 2,
+          top: logicalH / 2,
+          fontSize: Math.round(base * 0.14) || 36,
           fill: '#1e293b',
           originX: 'center',
           originY: 'center',
@@ -251,7 +358,7 @@ export const Editor: React.FC<EditorProps> = ({
         pushHistory();
       }
     },
-    [existingLabel, selectedTemplate, pushHistory]
+    [existingLabel, selectedTemplate, pushHistory, triggerAutoSave]
   );
 
   // テキスト追加 (横書き / 縦書き)
@@ -259,8 +366,8 @@ export const Editor: React.FC<EditorProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const width = canvas.width || 300;
-    const height = canvas.height || 200;
+    const { width, height } = getLogicalCanvasSize(canvas);
+    const base = Math.min(width, height);
 
     const defaultRawText = isVertical ? '縦書き' : 'テキスト';
     const displayText = isVertical ? toVerticalText(defaultRawText) : defaultRawText;
@@ -268,7 +375,7 @@ export const Editor: React.FC<EditorProps> = ({
     const text = new fabric.IText(displayText, {
       left: width / 2,
       top: height / 2,
-      fontSize: Math.round(height * 0.14) || 36,
+      fontSize: Math.round(base * 0.14) || 36,
       fill: '#1e293b',
       originX: 'center',
       originY: 'center',
@@ -301,10 +408,9 @@ export const Editor: React.FC<EditorProps> = ({
         if (!canvas) return;
 
         const fabricImg = new fabric.FabricImage(imgEl);
-        const canvasW = canvas.width || 400;
-        const canvasH = canvas.height || 300;
+        const { width: canvasW, height: canvasH } = getLogicalCanvasSize(canvas);
 
-        // Canvasの40%程度の大きさに収まるようスケール
+        // Canvasの45%程度の大きさに収まるようスケール
         const maxDim = Math.min(canvasW, canvasH) * 0.45;
         const scale = maxDim / Math.max(fabricImg.width, fabricImg.height);
 
@@ -339,8 +445,7 @@ export const Editor: React.FC<EditorProps> = ({
   const handleAddRect = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const w = canvas.width || 300;
-    const h = canvas.height || 200;
+    const { width: w, height: h } = getLogicalCanvasSize(canvas);
 
     const rect = new fabric.Rect({
       left: w / 2,
@@ -367,8 +472,7 @@ export const Editor: React.FC<EditorProps> = ({
   const handleAddCircle = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const w = canvas.width || 300;
-    const h = canvas.height || 200;
+    const { width: w, height: h } = getLogicalCanvasSize(canvas);
 
     const circle = new fabric.Circle({
       left: w / 2,
@@ -392,8 +496,7 @@ export const Editor: React.FC<EditorProps> = ({
   const handleAddLine = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const w = canvas.width || 300;
-    const h = canvas.height || 200;
+    const { width: w, height: h } = getLogicalCanvasSize(canvas);
 
     const line = new fabric.Line([w * 0.2, h / 2, w * 0.8, h / 2], {
       stroke: '#334155',
@@ -443,33 +546,35 @@ export const Editor: React.FC<EditorProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const w = canvas.width || 300;
-    const h = canvas.height || 200;
+    const { width: w, height: h } = getLogicalCanvasSize(canvas);
+    const base = Math.min(w, h);
 
     // 商品名
     const nameText = new fabric.IText(product.name, {
       left: w / 2,
       top: h * 0.28,
-      fontSize: Math.round(h * 0.16),
+      fontSize: Math.round(base * 0.15),
       fontWeight: 'bold',
       fill: '#1e293b',
       originX: 'center',
       originY: 'center',
     });
+    (nameText as unknown as { isVertical?: boolean; rawText?: string }).isVertical = false;
+    (nameText as unknown as { isVertical?: boolean; rawText?: string }).rawText = product.name;
 
     // 価格
-    const priceText = new fabric.IText(
-      product.price ? `${product.price.toLocaleString()}円` : '',
-      {
-        left: w / 2,
-        top: h * 0.58,
-        fontSize: Math.round(h * 0.2),
-        fontWeight: 'bold',
-        fill: '#dc2626',
-        originX: 'center',
-        originY: 'center',
-      }
-    );
+    const priceStr = product.price ? `${product.price.toLocaleString()}円` : '';
+    const priceText = new fabric.IText(priceStr, {
+      left: w / 2,
+      top: h * 0.58,
+      fontSize: Math.round(base * 0.19),
+      fontWeight: 'bold',
+      fill: '#dc2626',
+      originX: 'center',
+      originY: 'center',
+    });
+    (priceText as unknown as { isVertical?: boolean; rawText?: string }).isVertical = false;
+    (priceText as unknown as { isVertical?: boolean; rawText?: string }).rawText = priceStr;
 
     // 内容量 & 店名
     const subDetails = [
@@ -482,11 +587,13 @@ export const Editor: React.FC<EditorProps> = ({
     const subText = new fabric.IText(subDetails, {
       left: w / 2,
       top: h * 0.82,
-      fontSize: Math.round(h * 0.1),
+      fontSize: Math.round(base * 0.095),
       fill: '#64748b',
       originX: 'center',
       originY: 'center',
     });
+    (subText as unknown as { isVertical?: boolean; rawText?: string }).isVertical = false;
+    (subText as unknown as { isVertical?: boolean; rawText?: string }).rawText = subDetails;
 
     canvas.add(nameText, priceText, subText);
     canvas.renderAll();
@@ -573,16 +680,17 @@ export const Editor: React.FC<EditorProps> = ({
                   onOpenPrint({
                     id: labelId,
                     name: labelName,
-                    width: initialSize.width,
-                    height: initialSize.height,
+                    width: currentSize.width,
+                    height: currentSize.height,
                     createdAt: existingLabel?.createdAt || now,
                     updatedAt: now,
                     backgroundColor,
                     canvasJson: JSON.stringify(canvas?.toObject(['isVertical', 'rawText']) || {}),
                     thumbnailUrl: thumb,
-                    paperOrientation: existingLabel?.paperOrientation || initialSize.paperOrientation,
-                    sheetLayout: existingLabel?.sheetLayout || initialSize.sheetLayout,
-                    formatType: existingLabel?.formatType || initialSize.formatType,
+                    labelOrientation: isPortraitLabel ? 'portrait' : 'landscape',
+                    paperOrientation: currentSize.paperOrientation || existingLabel?.paperOrientation,
+                    sheetLayout: currentSize.sheetLayout || existingLabel?.sheetLayout,
+                    formatType: currentSize.formatType || existingLabel?.formatType,
                   });
                 }}
                 className="h-8 sm:h-9 px-2 sm:px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95 shrink-0"
@@ -628,8 +736,8 @@ export const Editor: React.FC<EditorProps> = ({
         }
       />
 
-      {/* ラベル名とサイズ情報バー */}
-      <div className="bg-white px-3 sm:px-4 py-1.5 border-b border-slate-200 flex items-center justify-between text-xs shrink-0 w-full">
+      {/* ラベル名・ラベルの向き切り替え・サイズ情報バー */}
+      <div className="bg-white px-2.5 sm:px-4 py-1.5 border-b border-slate-200 flex items-center justify-between gap-2 text-xs shrink-0 w-full">
         <input
           type="text"
           value={labelName}
@@ -637,18 +745,57 @@ export const Editor: React.FC<EditorProps> = ({
             setLabelName(e.target.value);
             triggerAutoSave();
           }}
-          className="font-bold text-slate-800 bg-transparent border-none focus:outline-hidden focus:bg-slate-50 px-1 sm:px-2 py-1 rounded-md max-w-[180px] sm:max-w-[200px] text-xs sm:text-sm"
+          className="font-bold text-slate-800 bg-transparent border-none focus:outline-hidden focus:bg-slate-50 px-1.5 py-1 rounded-md min-w-0 flex-1 max-w-[160px] sm:max-w-[220px] text-xs sm:text-sm"
           placeholder="ラベル名を入力"
         />
-        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md shrink-0">
-          {initialSize.width} × {initialSize.height} mm
-        </span>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* ラベル自体の向き（横向き / 縦向き）切り替えトグル */}
+          {currentSize.width !== currentSize.height && (
+            <div
+              className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200"
+              role="group"
+              aria-label="ラベルの向き"
+            >
+              <button
+                type="button"
+                onClick={() => handleSwitchLabelOrientation('landscape')}
+                className={`px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all ${
+                  !isPortraitLabel
+                    ? 'bg-white text-blue-600 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="横向きラベルにする"
+              >
+                <RectangleHorizontal className="w-3.5 h-3.5" />
+                <span>横向き</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchLabelOrientation('portrait')}
+                className={`px-2 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition-all ${
+                  isPortraitLabel
+                    ? 'bg-white text-blue-600 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="縦向きラベルにする"
+              >
+                <RectangleVertical className="w-3.5 h-3.5" />
+                <span>縦向き</span>
+              </button>
+            </div>
+          )}
+
+          <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md shrink-0">
+            {currentSize.width}×{currentSize.height}mm
+          </span>
+        </div>
       </div>
 
       {/* 中央：Canvas描画領域 */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <LabelCanvas
-          size={initialSize}
+          size={currentSize}
           backgroundColor={backgroundColor}
           onCanvasReady={handleCanvasReady}
           onSelectionChange={setSelectedObject}

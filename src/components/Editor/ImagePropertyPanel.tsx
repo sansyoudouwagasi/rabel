@@ -65,8 +65,9 @@ export const ImagePropertyPanel: React.FC<ImagePropertyPanelProps> = ({
   // 中央配置
   const handleCenter = () => {
     if (!canvas) return;
-    const canvasW = canvas.width || 400;
-    const canvasH = canvas.height || 300;
+    const zoom = canvas.getZoom() || 1;
+    const canvasW = (canvas.width || 400) / zoom;
+    const canvasH = (canvas.height || 300) / zoom;
     imageObject.set({
       left: canvasW / 2,
       top: canvasH / 2,
