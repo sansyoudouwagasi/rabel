@@ -934,6 +934,23 @@ export const Editor: React.FC<EditorProps> = ({
         </div>
       </div>
 
+      {/* 食品裏ラベル専用：消費期限・原材料などの一括入力バー（キャンバスに被らない上部固定バー） */}
+      {isFoodLabelActive && (
+        <div className="bg-amber-50/90 border-b border-amber-200 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+          <span className="text-[11px] font-bold text-amber-900 truncate">
+            食品表示枠：各項目をまとめて入力できます
+          </span>
+          <button
+            type="button"
+            onClick={handleOpenFoodModal}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 active:scale-95 transition-all shrink-0"
+          >
+            <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+            <span>消費期限・原材料などを入力・編集</span>
+          </button>
+        </div>
+      )}
+
       {/* 中央：Canvas描画領域 */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
         <LabelCanvas
@@ -943,20 +960,6 @@ export const Editor: React.FC<EditorProps> = ({
           onSelectionChange={setSelectedObject}
           onObjectModified={handleObjectModified}
         />
-
-        {/* 食品裏ラベル専用：消費期限・原材料などの一括入力フローティングボタン */}
-        {isFoodLabelActive && (
-          <div className="absolute top-3 left-3 z-10">
-            <button
-              type="button"
-              onClick={handleOpenFoodModal}
-              className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-2xl shadow-lg border border-amber-500 flex items-center gap-1.5 active:scale-95 transition-all"
-            >
-              <ClipboardList className="w-4 h-4 shrink-0" />
-              <span>消費期限・原材料などを入力・編集</span>
-            </button>
-          </div>
-        )}
 
         {/* 選択中オブジェクトのクイック操作（前面・背面・回転・反転・削除） */}
         {selectedObject && (

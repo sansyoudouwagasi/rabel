@@ -105,6 +105,8 @@ export const TEMPLATES: LabelTemplate[] = [
         top: padding,
         width: width - padding * 2,
         height: height - padding * 2,
+        originX: 'left',
+        originY: 'top',
         fill: 'transparent',
         stroke: '#334155',
         strokeWidth: 4,
@@ -148,6 +150,8 @@ export const TEMPLATES: LabelTemplate[] = [
         top: pad,
         width: width - pad * 2,
         height: height - pad * 2,
+        originX: 'left',
+        originY: 'top',
         fill: 'transparent',
         stroke: '#854d0e',
         strokeWidth: 3,
@@ -196,6 +200,8 @@ export const TEMPLATES: LabelTemplate[] = [
         top: pad,
         width: width - pad * 2,
         height: height - pad * 2,
+        originX: 'left',
+        originY: 'top',
         fill: 'transparent',
         stroke: '#94a3b8',
         strokeWidth: 2,
@@ -243,6 +249,8 @@ export const TEMPLATES: LabelTemplate[] = [
         top: 0,
         width: width,
         height: height * bandRatio,
+        originX: 'left',
+        originY: 'top',
         fill: '#78350f',
       });
       const header = createText('手作りお菓子', {
@@ -426,6 +434,8 @@ export const TEMPLATES: LabelTemplate[] = [
         top: height * 0.45,
         width: width,
         height: height * 0.55,
+        originX: 'left',
+        originY: 'top',
         fill: '#f1f5f9',
       });
       const title = createText('タイムセール', {
@@ -471,6 +481,8 @@ export const TEMPLATES: LabelTemplate[] = [
           top: bannerY,
           width: bannerW,
           height: bannerH,
+          originX: 'left',
+          originY: 'top',
           fill: '#dc2626',
           rx: 6,
           ry: 6,
@@ -509,6 +521,8 @@ export const TEMPLATES: LabelTemplate[] = [
           top: 16,
           width: width * 0.38,
           height: height * 0.28,
+          originX: 'left',
+          originY: 'top',
           fill: '#dc2626',
           rx: 6,
           ry: 6,
@@ -562,6 +576,8 @@ export const TEMPLATES: LabelTemplate[] = [
         top: ribbonY,
         width: width,
         height: ribbonH,
+        originX: 'left',
+        originY: 'top',
         fill: '#f59e0b',
       });
       const ribbonText = createText('★ 店長おすすめ ★', {

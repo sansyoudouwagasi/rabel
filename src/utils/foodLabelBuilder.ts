@@ -56,33 +56,75 @@ export interface FoodCanvasObjectProps {
   rawText?: string;
 }
 
+const FOOD_FONT_FAMILY = '"Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif';
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+function getMeasureContext(): CanvasRenderingContext2D | null {
+  if (typeof document === 'undefined') return null;
+  if (!measureCtx) {
+    const c = document.createElement('canvas');
+    measureCtx = c.getContext('2d');
+  }
+  return measureCtx;
+}
+
 /**
- * 文字列の表示幅（全角=1, 半角=0.58）を概算し、指定幅に収まるよう自動折り返しする
+ * 実際のCanvas 2D計測（フォールバック付き）で指定ピクセル幅に収まるよう自動折り返しする
  */
 function wrapTextByPixelWidth(text: string, maxWidthPx: number, fontSizePx: number): string[] {
   if (!text) return [''];
   const rawLines = text.split('\n');
   const wrappedLines: string[] = [];
-  const maxFullWidthChars = Math.max(4, (maxWidthPx / fontSizePx) * 0.96);
+
+  const ctx = getMeasureContext();
+  if (ctx) {
+    ctx.font = `bold ${fontSizePx}px ${FOOD_FONT_FAMILY}`;
+  }
+  const maxFullWidthChars = Math.max(4, (maxWidthPx / fontSizePx) * 0.98);
+
+  const measureLinePx = (str: string): number => {
+    if (ctx) {
+      return ctx.measureText(str).width;
+    }
+    let w = 0;
+    for (const c of Array.from(str)) {
+      w += (c.charCodeAt(0) <= 0x007f ? 0.56 : 1.0) * fontSizePx;
+    }
+    return w;
+  };
 
   for (const rawLine of rawLines) {
     if (!rawLine) {
       wrappedLines.push('');
       continue;
     }
+
+    if (measureLinePx(rawLine) <= maxWidthPx) {
+      wrappedLines.push(rawLine);
+      continue;
+    }
+
     let currentLine = '';
     let currentWeight = 0;
+    const chars = Array.from(rawLine);
 
-    for (const ch of Array.from(rawLine)) {
-      const code = ch.charCodeAt(0);
-      const charWeight = code <= 0x007f ? 0.58 : 1.0;
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      const nextCandidate = currentLine + ch;
+      const charWeight = ch.charCodeAt(0) <= 0x007f ? 0.56 : 1.0;
 
-      if (currentWeight + charWeight > maxFullWidthChars && currentLine.length > 0) {
+      // 句読点や閉じ括弧が行頭に来ないよう調整（禁則処理）
+      const isClosingPunct = ch === '、' || ch === '。' || ch === '）' || ch === ')';
+      const exceeds = ctx
+        ? measureLinePx(nextCandidate) > maxWidthPx
+        : currentWeight + charWeight > maxFullWidthChars;
+
+      if (exceeds && currentLine.length > 0 && !isClosingPunct) {
         wrappedLines.push(currentLine);
         currentLine = ch;
         currentWeight = charWeight;
       } else {
-        currentLine += ch;
+        currentLine = nextCandidate;
         currentWeight += charWeight;
       }
     }
@@ -100,7 +142,7 @@ function createFoodText(
   foodField?: string
 ): fabric.IText {
   const obj = new fabric.IText(text, {
-    fontFamily: '"Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif',
+    fontFamily: FOOD_FONT_FAMILY,
     fill: '#0f172a',
     lineHeight: 1.18,
     ...options,
@@ -130,25 +172,35 @@ export function applyFoodBackLabelToCanvas(
   });
   existingFoodObjs.forEach((obj) => canvas.remove(obj));
 
-  const padX = Math.max(8, Math.round(width * 0.032));
-  const padY = Math.max(6, Math.round(height * 0.025));
+  const padX = Math.max(10, Math.round(width * 0.036));
+  const padY = Math.max(8, Math.round(height * 0.028));
   const contentW = width - padX * 2;
   const contentH = height - padY * 2;
 
   const isPortrait = height > width;
-  const labelColRatio = isPortrait ? 0.25 : 0.22;
+  const labelColRatio = isPortrait ? 0.24 : 0.22;
   const labelColW = Math.round(contentW * labelColRatio);
   const valueColW = contentW - labelColW;
 
+  // 横幅に対して1行あたり約17文字（全体で約22.5文字）収まるフォントサイズを上限とする
+  const maxFontByWidth = Math.max(
+    8,
+    Math.min(Math.floor(contentW / 22.2), Math.floor(labelColW / 4.5))
+  );
+
   // 初期推定フォントサイズから折り返し行数を計算し、高さに収まるよう収束計算する
-  let fontSize = Math.round(Math.min(width, height) * (data.showNutrition ? 0.052 : 0.062));
-  fontSize = Math.max(9, Math.min(fontSize, Math.round(labelColW / 4.4)));
+  let fontSize = Math.min(
+    maxFontByWidth,
+    Math.round(Math.min(width, height) * (data.showNutrition ? 0.048 : 0.056))
+  );
+  fontSize = Math.max(8, fontSize);
 
   const lineHeightRatio = 1.18;
+  const fabricFontHeightMult = 1.15;
 
   const calcLayout = (fs: number) => {
-    const cellPadX = Math.max(4, Math.round(fs * 0.45));
-    const cellPadY = Math.max(3, Math.round(fs * 0.32));
+    const cellPadX = Math.max(5, Math.round(fs * 0.45));
+    const cellPadY = Math.max(4, Math.round(fs * 0.38));
     const usableValueW = Math.max(40, valueColW - cellPadX * 2);
 
     const rows = [
@@ -191,7 +243,7 @@ export function applyFoodBackLabelToCanvas(
     ].map((r) => {
       const wrapped = wrapTextByPixelWidth(r.value, usableValueW, fs);
       const lineCount = Math.max(1, wrapped.length);
-      const textH = lineCount * fs * lineHeightRatio;
+      const textH = lineCount * fs * fabricFontHeightMult * lineHeightRatio;
       const rowH = Math.ceil(textH + cellPadY * 2);
       return {
         ...r,
@@ -201,32 +253,40 @@ export function applyFoodBackLabelToCanvas(
       };
     });
 
-    const titleH = data.showProductTitle && data.productTitle.trim()
-      ? Math.ceil(fs * 1.15 + cellPadY * 1.2)
-      : 0;
+    const titleH =
+      data.showProductTitle && data.productTitle.trim()
+        ? Math.ceil(fs * 1.06 * fabricFontHeightMult + cellPadY * 1.5)
+        : 0;
 
     const tableH = rows.reduce((sum, r) => sum + r.rowH, 0);
 
     let nutritionBlockH = 0;
     let nutritionWrapped = '';
     let nutritionBoxH = 0;
-    const nutritionGapTop = Math.max(3, Math.round(fs * 0.35));
-    const nutritionTitleH = Math.ceil(fs * 1.15);
-    const nutritionNoteH = data.showNutritionNote ? Math.ceil(fs * 1.15 + 2) : 0;
+    const nutritionGapTop = Math.max(4, Math.round(fs * 0.42));
+    const nutritionTitleH = Math.ceil(fs * 0.96 * fabricFontHeightMult + 2);
+    const nutritionNoteH = data.showNutritionNote
+      ? Math.ceil(fs * 0.92 * fabricFontHeightMult + 2)
+      : 0;
 
     if (data.showNutrition) {
+      const nutFs = Math.max(7, Math.round(fs * 0.94));
       const rawNutrition = `エネルギー ${data.energy}、たんぱく質 ${data.protein}、\n脂質 ${data.fat}、炭水化物 ${data.carbs}、食塩相当量 ${data.salt}`;
       const wrappedNutLines = wrapTextByPixelWidth(
         rawNutrition,
         contentW - cellPadX * 2,
-        fs * 0.95
+        nutFs
       );
       nutritionWrapped = wrappedNutLines.join('\n');
       nutritionBoxH = Math.ceil(
-        wrappedNutLines.length * (fs * 0.95) * lineHeightRatio + cellPadY * 2
+        wrappedNutLines.length * nutFs * fabricFontHeightMult * lineHeightRatio + cellPadY * 2
       );
       nutritionBlockH =
-        nutritionGapTop + nutritionTitleH + 3 + nutritionBoxH + (data.showNutritionNote ? 3 + nutritionNoteH : 0);
+        nutritionGapTop +
+        nutritionTitleH +
+        3 +
+        nutritionBoxH +
+        (data.showNutritionNote ? 4 + nutritionNoteH : 0);
     }
 
     const totalH = titleH + tableH + nutritionBlockH;
@@ -249,13 +309,13 @@ export function applyFoodBackLabelToCanvas(
 
   let layout = calcLayout(fontSize);
 
-  // 高さが溢れる場合はフォントサイズを縮小、余裕がある場合は拡大してフィットさせる
-  for (let iter = 0; iter < 12; iter++) {
-    if (layout.totalH > contentH && fontSize > 8) {
+  // 高さが溢れる場合はフォントサイズを縮小、余裕がある場合は横幅上限まで拡大してフィットさせる
+  for (let iter = 0; iter < 14; iter++) {
+    if (layout.totalH > contentH && fontSize > 7) {
       const ratio = contentH / layout.totalH;
-      fontSize = Math.max(8, Math.floor(fontSize * Math.max(0.85, ratio)));
+      fontSize = Math.max(7, Math.floor(fontSize * Math.max(0.85, ratio)));
       layout = calcLayout(fontSize);
-    } else if (layout.totalH < contentH * 0.82 && fontSize < Math.round(labelColW / 4.3)) {
+    } else if (layout.totalH < contentH * 0.88 && fontSize < maxFontByWidth) {
       fontSize = fontSize + 1;
       const nextLayout = calcLayout(fontSize);
       if (nextLayout.totalH > contentH) {
@@ -268,12 +328,13 @@ export function applyFoodBackLabelToCanvas(
     }
   }
 
-  // 余った縦スペースを表の各行に均等配分してラベル全体に美しく広げる
-  const extraH = Math.max(0, contentH - layout.totalH);
+  // 余った縦スペースを適度な範囲で表の各行へ配分し、不自然に間延びしないよう上限を設ける
+  const maxExtraTotal = layout.rows.length * Math.round(layout.fs * 0.55);
+  const extraH = Math.min(maxExtraTotal, Math.max(0, contentH - layout.totalH));
   if (extraH > 0) {
     const totalLines = layout.rows.reduce((s, r) => s + r.lineCount, 0);
     layout.rows.forEach((r) => {
-      r.rowH += Math.floor((extraH * (r.lineCount / totalLines)) * 0.85);
+      r.rowH += Math.floor(extraH * (r.lineCount / totalLines));
     });
     layout.tableH = layout.rows.reduce((s, r) => s + r.rowH, 0);
   }
@@ -286,20 +347,20 @@ export function applyFoodBackLabelToCanvas(
         layout.nutritionTitleH +
         3 +
         layout.nutritionBoxH +
-        (data.showNutritionNote ? 3 + layout.nutritionNoteH : 0)
+        (data.showNutritionNote ? 4 + layout.nutritionNoteH : 0)
       : 0);
 
   let currentY = Math.max(padY, Math.round((height - finalTotalH) / 2));
-  const strokeW = Math.max(1.5, Math.min(3, Math.round(layout.fs * 0.12)));
+  const strokeW = Math.max(1.5, Math.min(2.5, Math.round(layout.fs * 0.12)));
 
   // (0) 上部商品名（枠外）
   if (data.showProductTitle && data.productTitle.trim()) {
     const titleObj = createFoodText(
       data.productTitle,
       {
-        left: padX + 2,
+        left: padX + 4,
         top: currentY + layout.titleH / 2,
-        fontSize: Math.round(layout.fs * 1.06),
+        fontSize: Math.round(layout.fs * 1.05),
         fontWeight: 'bold',
         originX: 'left',
         originY: 'center',
@@ -312,12 +373,14 @@ export function applyFoodBackLabelToCanvas(
 
   const tableTop = currentY;
 
-  // 表の外枠（背景白＋黒枠線）
+  // 表の外枠（Fabric.js v7のデフォルトoriginX/Y='center'に合わせ中心座標で指定しズレを防止）
   const outerBorder = new fabric.Rect({
-    left: padX,
-    top: tableTop,
+    left: padX + contentW / 2,
+    top: tableTop + layout.tableH / 2,
     width: contentW,
     height: layout.tableH,
+    originX: 'center',
+    originY: 'center',
     fill: '#ffffff',
     stroke: '#0f172a',
     strokeWidth: strokeW,
@@ -334,6 +397,8 @@ export function applyFoodBackLabelToCanvas(
   const vLine = new fabric.Line([dividerX, tableTop, dividerX, tableTop + layout.tableH], {
     stroke: '#0f172a',
     strokeWidth: strokeW,
+    originX: 'center',
+    originY: 'center',
     selectable: false,
     evented: false,
   });
@@ -361,14 +426,14 @@ export function applyFoodBackLabelToCanvas(
     );
     canvas.add(headerObj);
 
-    // 右列（内容）
+    // 右列（内容：Canvas 2Dで無効となる 'medium' は使わず 'bold' を指定）
     const valObj = createFoodText(
       row.wrappedText,
       {
         left: dividerX + layout.cellPadX,
         top: rowCenterY,
         fontSize: layout.fs,
-        fontWeight: 'medium',
+        fontWeight: 'bold',
         originX: 'left',
         originY: 'center',
         textAlign: 'left',
@@ -384,6 +449,8 @@ export function applyFoodBackLabelToCanvas(
       const hLine = new fabric.Line([padX, rowY, padX + contentW, rowY], {
         stroke: '#0f172a',
         strokeWidth: strokeW,
+        originX: 'center',
+        originY: 'center',
         selectable: false,
         evented: false,
       });
@@ -402,7 +469,7 @@ export function applyFoodBackLabelToCanvas(
     const nutTitleObj = createFoodText(
       data.nutritionTitle || '栄養成分表示',
       {
-        left: padX + 2,
+        left: padX + 4,
         top: currentY + layout.nutritionTitleH / 2,
         fontSize: Math.round(layout.fs * 0.96),
         fontWeight: 'bold',
@@ -414,12 +481,14 @@ export function applyFoodBackLabelToCanvas(
     canvas.add(nutTitleObj);
     currentY += layout.nutritionTitleH + 3;
 
-    // 栄養成分の枠線
+    // 栄養成分の枠線（中心座標で指定）
     const nutBox = new fabric.Rect({
-      left: padX,
-      top: currentY,
+      left: padX + contentW / 2,
+      top: currentY + layout.nutritionBoxH / 2,
       width: contentW,
       height: layout.nutritionBoxH,
+      originX: 'center',
+      originY: 'center',
       fill: '#ffffff',
       stroke: '#0f172a',
       strokeWidth: strokeW,
@@ -435,7 +504,7 @@ export function applyFoodBackLabelToCanvas(
       {
         left: padX + layout.cellPadX,
         top: currentY + layout.nutritionBoxH / 2,
-        fontSize: Math.round(layout.fs * 0.94),
+        fontSize: Math.max(7, Math.round(layout.fs * 0.94)),
         fontWeight: 'bold',
         originX: 'left',
         originY: 'center',
@@ -448,13 +517,13 @@ export function applyFoodBackLabelToCanvas(
 
     // 「この表示値は、目安です。」
     if (data.showNutritionNote) {
-      currentY += 3;
+      currentY += 4;
       const nutNoteObj = createFoodText(
         'この表示値は、目安です。',
         {
-          left: padX + 2,
+          left: padX + 4,
           top: currentY + layout.nutritionNoteH / 2,
-          fontSize: Math.round(layout.fs * 0.92),
+          fontSize: Math.max(7, Math.round(layout.fs * 0.92)),
           fontWeight: 'bold',
           originX: 'left',
           originY: 'center',
