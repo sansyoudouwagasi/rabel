@@ -14,6 +14,15 @@ import { ShapePropertyPanel } from '../components/Editor/ShapePropertyPanel';
 import { ImagePropertyPanel } from '../components/Editor/ImagePropertyPanel';
 import { BackgroundPanel } from '../components/Editor/BackgroundPanel';
 import { ProductSelectModal } from '../components/Editor/ProductSelectModal';
+import { FoodLabelModal } from '../components/Editor/FoodLabelModal';
+import {
+  applyFoodBackLabelToCanvas,
+  extractFoodLabelDataFromCanvas,
+  hasFoodBackLabelOnCanvas,
+  DEFAULT_FOOD_LABEL_WITH_NUTRITION,
+  DEFAULT_FOOD_LABEL_STANDARD,
+  type FoodLabelData,
+} from '../utils/foodLabelBuilder';
 import { resizeImageFile } from '../utils/imageUtils';
 import { saveLabel, deleteLabel } from '../db/labelRepository';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -38,10 +47,19 @@ import {
   ChevronDown,
   RectangleHorizontal,
   RectangleVertical,
+  ClipboardList,
 } from 'lucide-react';
 
 import { TEMPLATES } from '../templates/templates';
 import { toVerticalText } from '../utils/textDirection';
+
+const CUSTOM_CANVAS_PROPS = [
+  'isVertical',
+  'rawText',
+  'isFoodTableElement',
+  'foodField',
+  'foodLabelData',
+];
 
 interface EditorProps {
   initialSize: LabelSize;
@@ -89,6 +107,15 @@ export const Editor: React.FC<EditorProps> = ({
   // 下部パネル・モーダル状態
   const [activeBottomPanel, setActiveBottomPanel] = useState<'none' | 'text_menu' | 'shape_menu' | 'bg'>('none');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isFoodModalOpen, setIsFoodModalOpen] = useState(false);
+  const [foodModalData, setFoodModalData] = useState<FoodLabelData>(
+    selectedTemplate?.id === 'food-back-standard'
+      ? DEFAULT_FOOD_LABEL_STANDARD
+      : DEFAULT_FOOD_LABEL_WITH_NUTRITION
+  );
+  const [isFoodLabelActive, setIsFoodLabelActive] = useState<boolean>(
+    Boolean(selectedTemplate?.isFoodBackLabel)
+  );
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isOrientationModalOpen, setIsOrientationModalOpen] = useState<boolean>(
     initialSize.width !== initialSize.height
@@ -99,6 +126,7 @@ export const Editor: React.FC<EditorProps> = ({
 
   // 編集中にラベルの向き（横向き⇔縦向き）を切り替えた際のキャンバス引き継ぎ用Ref
   const pendingOrientationJsonRef = useRef<string | null>(null);
+  const pendingFoodDataRef = useRef<FoodLabelData | null>(null);
   const shouldReapplyTemplateRef = useRef<boolean>(false);
 
   const handleDeleteCurrentLabel = async () => {
@@ -132,7 +160,7 @@ export const Editor: React.FC<EditorProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || isHistoryProcessing.current) return;
 
-    const json = JSON.stringify(canvas.toObject(['isVertical', 'rawText']));
+    const json = JSON.stringify(canvas.toObject(CUSTOM_CANVAS_PROPS));
     // 直前の状態と同じなら保存しない
     if (historyIndex.current >= 0 && historyStack.current[historyIndex.current] === json) {
       return;
@@ -176,7 +204,7 @@ export const Editor: React.FC<EditorProps> = ({
           createdAt: existingLabel?.createdAt || now,
           updatedAt: now,
           backgroundColor: backgroundColor,
-          canvasJson: JSON.stringify(canvas.toObject(['isVertical', 'rawText'])),
+          canvasJson: JSON.stringify(canvas.toObject(CUSTOM_CANVAS_PROPS)),
           thumbnailUrl,
           labelOrientation:
             targetSize.labelOrientation ||
@@ -218,6 +246,40 @@ export const Editor: React.FC<EditorProps> = ({
     triggerAutoSave();
   }, [pushHistory, triggerAutoSave]);
 
+  // 食品表示（裏ラベル）入力・編集モーダルを開く
+  const handleOpenFoodModal = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const extracted = extractFoodLabelDataFromCanvas(canvas);
+      if (extracted) {
+        setFoodModalData(extracted);
+      }
+    }
+    setActiveBottomPanel('none');
+    setIsFoodModalOpen(true);
+  };
+
+  // 食品表示（裏ラベル）データをキャンバスへ反映
+  const handleApplyFoodModal = (data: FoodLabelData) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { width: logicalW, height: logicalH } = getLogicalCanvasSize(canvas);
+    applyFoodBackLabelToCanvas(canvas, logicalW, logicalH, data);
+    setFoodModalData(data);
+    setIsFoodLabelActive(true);
+    setIsFoodModalOpen(false);
+    setSelectedObject(null);
+    if (
+      data.title &&
+      (labelName === '新規ラベル' ||
+        labelName === '食品裏ラベル (栄養成分付)ラベル' ||
+        labelName === '食品裏ラベル (一括表示)ラベル')
+    ) {
+      setLabelName(`${data.title} 裏ラベル`);
+    }
+    handleObjectModified();
+  };
+
   // ラベル自体の向き（横向き / 縦向き）を切り替え
   const handleSwitchLabelOrientation = (targetOrientation: LabelOrientation) => {
     const currentOrientation: LabelOrientation = isPortraitLabel ? 'portrait' : 'landscape';
@@ -228,6 +290,20 @@ export const Editor: React.FC<EditorProps> = ({
 
     const canvas = canvasRef.current;
     const nextSize = getOrientedLabelSize(currentSize, targetOrientation);
+
+    // 食品裏ラベルが含まれる場合は、新しい縦横サイズに合わせて表組みと改行を自動再レイアウトする
+    if (canvas && hasFoodBackLabelOnCanvas(canvas)) {
+      const extracted = extractFoodLabelDataFromCanvas(canvas);
+      if (extracted) {
+        pendingFoodDataRef.current = extracted;
+        pendingOrientationJsonRef.current = null;
+        shouldReapplyTemplateRef.current = false;
+        setSelectedObject(null);
+        setCurrentSize(nextSize);
+        setIsOrientationModalOpen(false);
+        return;
+      }
+    }
 
     // 新規作成直後でまだ手動編集していない場合は、新しい向きのキャンバスでテンプレート/白紙を初期生成し直す
     if (!hasUserEdited && !existingLabel) {
@@ -281,7 +357,7 @@ export const Editor: React.FC<EditorProps> = ({
       });
 
       pendingOrientationJsonRef.current = JSON.stringify(
-        canvas.toObject(['isVertical', 'rawText'])
+        canvas.toObject(CUSTOM_CANVAS_PROPS)
       );
     }
 
@@ -300,6 +376,7 @@ export const Editor: React.FC<EditorProps> = ({
     const prevJson = historyStack.current[historyIndex.current];
     await canvas.loadFromJSON(JSON.parse(prevJson));
     canvas.renderAll();
+    setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
     isHistoryProcessing.current = false;
     updateUndoRedoState();
     triggerAutoSave();
@@ -315,6 +392,7 @@ export const Editor: React.FC<EditorProps> = ({
     const nextJson = historyStack.current[historyIndex.current];
     await canvas.loadFromJSON(JSON.parse(nextJson));
     canvas.renderAll();
+    setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
     isHistoryProcessing.current = false;
     updateUndoRedoState();
     triggerAutoSave();
@@ -326,6 +404,19 @@ export const Editor: React.FC<EditorProps> = ({
       canvasRef.current = canvas;
       const { width: logicalW, height: logicalH } = getLogicalCanvasSize(canvas);
 
+      // 食品裏ラベルの向き切り替えに伴う表組み再レイアウト
+      if (pendingFoodDataRef.current) {
+        const foodData = pendingFoodDataRef.current;
+        pendingFoodDataRef.current = null;
+        applyFoodBackLabelToCanvas(canvas, logicalW, logicalH, foodData);
+        setIsFoodLabelActive(true);
+        historyStack.current = [];
+        historyIndex.current = -1;
+        pushHistory();
+        triggerAutoSave();
+        return;
+      }
+
       // 編集中に横向き⇔縦向きを切り替えた直後の復元
       if (pendingOrientationJsonRef.current) {
         const jsonStr = pendingOrientationJsonRef.current;
@@ -334,6 +425,7 @@ export const Editor: React.FC<EditorProps> = ({
           .loadFromJSON(JSON.parse(jsonStr))
           .then(() => {
             canvas.renderAll();
+            setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
             historyStack.current = [];
             historyIndex.current = -1;
             pushHistory();
@@ -349,6 +441,7 @@ export const Editor: React.FC<EditorProps> = ({
         try {
           canvas.loadFromJSON(JSON.parse(existingLabel.canvasJson)).then(() => {
             canvas.renderAll();
+            setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
             pushHistory();
           });
         } catch (err) {
@@ -359,6 +452,7 @@ export const Editor: React.FC<EditorProps> = ({
         // テンプレート適用
         selectedTemplate.apply(canvas, logicalW, logicalH);
         canvas.renderAll();
+        setIsFoodLabelActive(Boolean(selectedTemplate.isFoodBackLabel));
         historyStack.current = [];
         historyIndex.current = -1;
         pushHistory();
@@ -573,6 +667,28 @@ export const Editor: React.FC<EditorProps> = ({
     if (!canvas) return;
 
     const { width: w, height: h } = getLogicalCanvasSize(canvas);
+
+    // 食品裏ラベルが配置されている場合は、表の各項目へ商品データを自動反映する
+    if (hasFoodBackLabelOnCanvas(canvas)) {
+      const currentData = extractFoodLabelDataFromCanvas(canvas) || foodModalData;
+      const nextData: FoodLabelData = {
+        ...currentData,
+        title: product.name || currentData.title,
+        showTitle: true,
+        ingredients: product.ingredients || currentData.ingredients,
+        volume: product.volume || currentData.volume,
+        expiryValue: product.expiry || currentData.expiryValue,
+        storage: product.storage || currentData.storage,
+        manufacturerValue: product.shopName || currentData.manufacturerValue,
+      };
+      applyFoodBackLabelToCanvas(canvas, w, h, nextData);
+      setFoodModalData(nextData);
+      setIsFoodLabelActive(true);
+      setIsProductModalOpen(false);
+      handleObjectModified();
+      return;
+    }
+
     const base = Math.min(w, h);
 
     // 商品名
@@ -711,7 +827,7 @@ export const Editor: React.FC<EditorProps> = ({
                     createdAt: existingLabel?.createdAt || now,
                     updatedAt: now,
                     backgroundColor,
-                    canvasJson: JSON.stringify(canvas?.toObject(['isVertical', 'rawText']) || {}),
+                    canvasJson: JSON.stringify(canvas?.toObject(CUSTOM_CANVAS_PROPS) || {}),
                     thumbnailUrl: thumb,
                     labelOrientation: isPortraitLabel ? 'portrait' : 'landscape',
                     paperOrientation: currentSize.paperOrientation || existingLabel?.paperOrientation,
@@ -827,6 +943,20 @@ export const Editor: React.FC<EditorProps> = ({
           onSelectionChange={setSelectedObject}
           onObjectModified={handleObjectModified}
         />
+
+        {/* 食品裏ラベル専用：消費期限・原材料などの一括入力フローティングボタン */}
+        {isFoodLabelActive && (
+          <div className="absolute top-3 left-3 z-10">
+            <button
+              type="button"
+              onClick={handleOpenFoodModal}
+              className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-2xl shadow-lg border border-amber-500 flex items-center gap-1.5 active:scale-95 transition-all"
+            >
+              <ClipboardList className="w-4 h-4 shrink-0" />
+              <span>消費期限・原材料などを入力・編集</span>
+            </button>
+          </div>
+        )}
 
         {/* 選択中オブジェクトのクイック操作（前面・背面・回転・反転・削除） */}
         {selectedObject && (
@@ -1021,29 +1151,43 @@ export const Editor: React.FC<EditorProps> = ({
 
       {/* 下部固定メインツールバー */}
       <div className="bg-white border-t border-slate-200 z-30 pb-safe shrink-0">
-        <div className="flex items-center justify-around px-2 py-1.5 max-w-md mx-auto">
+        <div className="flex items-center justify-around px-1.5 py-1.5 max-w-md mx-auto">
+          {/* 食品裏ラベル一括入力・編集 */}
+          <button
+            type="button"
+            onClick={handleOpenFoodModal}
+            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl min-h-[50px] min-w-[52px] active:scale-95 transition-colors ${
+              isFoodLabelActive
+                ? 'bg-amber-50 text-amber-700 border border-amber-200 font-bold'
+                : 'text-amber-700 hover:bg-amber-50/70'
+            }`}
+          >
+            <ClipboardList className="w-5 h-5" />
+            <span className="text-[10px] font-bold mt-0.5">食品表示</span>
+          </button>
+
           {/* 文字 */}
           <button
             type="button"
             onClick={() =>
               setActiveBottomPanel(activeBottomPanel === 'text_menu' ? 'none' : 'text_menu')
             }
-            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl text-slate-700 hover:text-blue-600 hover:bg-blue-50/50 min-h-[50px] min-w-[56px] active:scale-95 transition-colors ${
+            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl text-slate-700 hover:text-blue-600 hover:bg-blue-50/50 min-h-[50px] min-w-[52px] active:scale-95 transition-colors ${
               activeBottomPanel === 'text_menu' ? 'bg-blue-50 text-blue-600' : ''
             }`}
           >
             <Type className="w-5 h-5" />
-            <span className="text-[11px] font-bold mt-0.5">文字</span>
+            <span className="text-[10px] font-bold mt-0.5">文字</span>
           </button>
 
           {/* 画像 */}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center p-1.5 rounded-2xl text-slate-700 hover:text-blue-600 hover:bg-blue-50/50 min-h-[50px] min-w-[56px] active:scale-95"
+            className="flex flex-col items-center justify-center p-1.5 rounded-2xl text-slate-700 hover:text-blue-600 hover:bg-blue-50/50 min-h-[50px] min-w-[52px] active:scale-95"
           >
             <ImageIcon className="w-5 h-5 text-slate-700" />
-            <span className="text-[11px] font-bold mt-0.5">画像</span>
+            <span className="text-[10px] font-bold mt-0.5">画像</span>
           </button>
 
           {/* 図形 */}
@@ -1054,14 +1198,14 @@ export const Editor: React.FC<EditorProps> = ({
                 activeBottomPanel === 'shape_menu' ? 'none' : 'shape_menu'
               )
             }
-            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl min-h-[50px] min-w-[56px] active:scale-95 ${
+            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl min-h-[50px] min-w-[52px] active:scale-95 ${
               activeBottomPanel === 'shape_menu'
                 ? 'text-blue-600 bg-blue-50/80 font-bold'
                 : 'text-slate-700 hover:bg-slate-50'
             }`}
           >
             <Square className="w-5 h-5" />
-            <span className="text-[11px] font-bold mt-0.5">図形</span>
+            <span className="text-[10px] font-bold mt-0.5">図形</span>
           </button>
 
           {/* 背景 */}
@@ -1070,27 +1214,35 @@ export const Editor: React.FC<EditorProps> = ({
             onClick={() =>
               setActiveBottomPanel(activeBottomPanel === 'bg' ? 'none' : 'bg')
             }
-            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl min-h-[50px] min-w-[56px] active:scale-95 ${
+            className={`flex flex-col items-center justify-center p-1.5 rounded-2xl min-h-[50px] min-w-[52px] active:scale-95 ${
               activeBottomPanel === 'bg'
                 ? 'text-blue-600 bg-blue-50/80 font-bold'
                 : 'text-slate-700 hover:bg-slate-50'
             }`}
           >
             <Palette className="w-5 h-5" />
-            <span className="text-[11px] font-bold mt-0.5">背景</span>
+            <span className="text-[10px] font-bold mt-0.5">背景</span>
           </button>
 
           {/* 商品から入力 */}
           <button
             type="button"
             onClick={() => setIsProductModalOpen(true)}
-            className="flex flex-col items-center justify-center p-1.5 rounded-2xl text-blue-600 hover:bg-blue-50/80 min-h-[50px] min-w-[56px] active:scale-95"
+            className="flex flex-col items-center justify-center p-1.5 rounded-2xl text-blue-600 hover:bg-blue-50/80 min-h-[50px] min-w-[52px] active:scale-95"
           >
             <Package className="w-5 h-5" />
-            <span className="text-[11px] font-bold mt-0.5">商品</span>
+            <span className="text-[10px] font-bold mt-0.5">商品</span>
           </button>
         </div>
       </div>
+
+      {/* 食品裏ラベル専用：消費期限・原材料・一括表示入力モーダル */}
+      <FoodLabelModal
+        isOpen={isFoodModalOpen}
+        initialData={foodModalData}
+        onClose={() => setIsFoodModalOpen(false)}
+        onApply={handleApplyFoodModal}
+      />
 
       {/* 商品選択モーダル */}
       <ProductSelectModal

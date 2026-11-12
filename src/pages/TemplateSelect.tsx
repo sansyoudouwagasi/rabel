@@ -206,21 +206,57 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
                   } rounded-lg border border-slate-300/90 p-1.5 flex flex-col items-center justify-center relative overflow-hidden shadow-xs group-hover:scale-[1.03] transition-all`}
                   style={{ backgroundColor: template.backgroundColor }}
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-slate-400 mb-0.5 opacity-50 shrink-0" />
-                  <span
-                    className={`text-[10px] font-bold text-center line-clamp-2 px-1 leading-tight ${
-                      template.backgroundColor === '#0f172a' ? 'text-slate-100' : 'text-slate-700'
-                    }`}
-                  >
-                    {template.name}
-                  </span>
-                  <span
-                    className={`text-[10px] font-extrabold mt-0.5 ${
-                      template.backgroundColor === '#0f172a' ? 'text-amber-400' : 'text-red-600'
-                    }`}
-                  >
-                    ¥280
-                  </span>
+                  {template.isFoodBackLabel ? (
+                    <div className="w-full h-full flex flex-col justify-between p-0.5 text-[6px] leading-none text-slate-800">
+                      <div className="font-bold text-[6.5px] truncate mb-0.5">
+                        クッキー(プレーン)
+                      </div>
+                      <div className="flex-1 w-full border border-slate-800 grid grid-cols-[32%_68%] grid-rows-4 text-[5.5px]">
+                        <div className="border-b border-r border-slate-700 flex items-center justify-center font-bold bg-slate-50">
+                          名称
+                        </div>
+                        <div className="border-b border-slate-700 flex items-center px-0.5 truncate">
+                          焼き菓子
+                        </div>
+                        <div className="border-b border-r border-slate-700 flex items-center justify-center font-bold bg-slate-50">
+                          原材料
+                        </div>
+                        <div className="border-b border-slate-700 flex items-center px-0.5 truncate">
+                          小麦粉、バター…
+                        </div>
+                        <div className="border-b border-r border-slate-700 flex items-center justify-center font-bold bg-slate-50">
+                          期限
+                        </div>
+                        <div className="border-b border-slate-700 flex items-center px-0.5 truncate text-blue-700 font-bold">
+                          202X.XX.XX
+                        </div>
+                        <div className="border-r border-slate-700 flex items-center justify-center font-bold bg-slate-50">
+                          製造者
+                        </div>
+                        <div className="flex items-center px-0.5 truncate">
+                          (株)洋菓子店A
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-slate-400 mb-0.5 opacity-50 shrink-0" />
+                      <span
+                        className={`text-[10px] font-bold text-center line-clamp-2 px-1 leading-tight ${
+                          template.backgroundColor === '#0f172a' ? 'text-slate-100' : 'text-slate-700'
+                        }`}
+                      >
+                        {template.name}
+                      </span>
+                      <span
+                        className={`text-[10px] font-extrabold mt-0.5 ${
+                          template.backgroundColor === '#0f172a' ? 'text-amber-400' : 'text-red-600'
+                        }`}
+                      >
+                        ¥280
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 

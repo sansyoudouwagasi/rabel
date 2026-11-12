@@ -1,5 +1,10 @@
 import * as fabric from 'fabric';
 import { toVerticalText } from '../utils/textDirection';
+import {
+  applyFoodBackLabelToCanvas,
+  DEFAULT_FOOD_LABEL_WITH_NUTRITION,
+  DEFAULT_FOOD_LABEL_STANDARD,
+} from '../utils/foodLabelBuilder';
 
 export interface LabelTemplate {
   id: string;
@@ -7,6 +12,7 @@ export interface LabelTemplate {
   category: 'simple' | 'japanese' | 'product' | 'promo';
   description: string;
   backgroundColor: string;
+  isFoodBackLabel?: boolean;
   apply: (canvas: fabric.Canvas, width: number, height: number) => void;
 }
 
@@ -27,6 +33,32 @@ function createText(
 }
 
 export const TEMPLATES: LabelTemplate[] = [
+  // 0-A. 食品裏ラベル (栄養成分表示付き - 提示画像完全準拠)
+  {
+    id: 'food-back-full',
+    name: '食品裏ラベル (栄養成分付)',
+    category: 'product',
+    description: '名称・原材料名・内容量・消費期限・保存方法・製造者＋栄養成分表示の表枠',
+    backgroundColor: '#ffffff',
+    isFoodBackLabel: true,
+    apply: (canvas, width, height) => {
+      applyFoodBackLabelToCanvas(canvas, width, height, DEFAULT_FOOD_LABEL_WITH_NUTRITION);
+    },
+  },
+
+  // 0-B. 食品裏ラベル (標準・一括表示枠のみ)
+  {
+    id: 'food-back-standard',
+    name: '食品裏ラベル (一括表示)',
+    category: 'product',
+    description: '名称・原材料名・内容量・消費期限・保存方法・製造者の標準裏ラベル表',
+    backgroundColor: '#ffffff',
+    isFoodBackLabel: true,
+    apply: (canvas, width, height) => {
+      applyFoodBackLabelToCanvas(canvas, width, height, DEFAULT_FOOD_LABEL_STANDARD);
+    },
+  },
+
   // 1. シンプル白
   {
     id: 'simple-white',
