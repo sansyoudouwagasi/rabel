@@ -20,7 +20,7 @@ interface TemplateSelectProps {
   onSelectTemplate: (template: LabelTemplate | null, finalSize: LabelSize) => void;
 }
 
-type CategoryTab = 'all' | 'simple' | 'japanese' | 'product' | 'promo';
+type CategoryTab = 'all' | 'food' | 'simple' | 'japanese' | 'product' | 'promo';
 
 export const TemplateSelect: React.FC<TemplateSelectProps> = ({
   size,
@@ -45,15 +45,19 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
 
   const categories = [
     { id: 'all' as const, label: 'すべて' },
+    { id: 'food' as const, label: '食品裏ラベル' },
     { id: 'simple' as const, label: 'シンプル' },
     { id: 'japanese' as const, label: '和風' },
     { id: 'product' as const, label: '商品・値札' },
     { id: 'promo' as const, label: 'SALE・販促' },
   ];
 
-  const filteredTemplates = activeCategory === 'all'
-    ? TEMPLATES
-    : TEMPLATES.filter((t) => t.category === activeCategory);
+  const filteredTemplates =
+    activeCategory === 'all'
+      ? TEMPLATES
+      : activeCategory === 'food'
+      ? TEMPLATES.filter((t) => Boolean(t.isFoodBackLabel))
+      : TEMPLATES.filter((t) => t.category === activeCategory);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -196,7 +200,11 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
               key={template.id}
               type="button"
               onClick={() => onSelectTemplate(template, currentSize)}
-              className="bg-white rounded-2xl p-3 border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all text-left flex flex-col justify-between group touch-manipulation"
+              className={`bg-white rounded-2xl p-3 border transition-all text-left flex flex-col justify-between group touch-manipulation ${
+                template.isFoodBackLabel
+                  ? 'border-2 border-amber-400 hover:border-amber-600 shadow-xs hover:shadow-md'
+                  : 'border-slate-200 hover:border-blue-500 hover:shadow-md'
+              }`}
             >
               {/* プレビュー風ボックス (選択中の向きに合わせて横長/縦長で表示) */}
               <div className="w-full h-28 bg-slate-100/80 rounded-xl flex items-center justify-center p-2 overflow-hidden">
@@ -265,8 +273,14 @@ export const TemplateSelect: React.FC<TemplateSelectProps> = ({
                   <h4 className="font-bold text-xs text-slate-800 group-hover:text-blue-600 truncate">
                     {template.name}
                   </h4>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-xs bg-slate-100 text-slate-500 shrink-0">
-                    {isPortrait ? '縦' : '横'}
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-xs shrink-0 ${
+                      template.isFoodBackLabel
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {template.isFoodBackLabel ? '食品表示枠' : isPortrait ? '縦' : '横'}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">

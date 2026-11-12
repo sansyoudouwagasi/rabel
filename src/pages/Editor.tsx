@@ -270,12 +270,12 @@ export const Editor: React.FC<EditorProps> = ({
     setIsFoodModalOpen(false);
     setSelectedObject(null);
     if (
-      data.title &&
+      data.productTitle &&
       (labelName === '新規ラベル' ||
         labelName === '食品裏ラベル (栄養成分付)ラベル' ||
         labelName === '食品裏ラベル (一括表示)ラベル')
     ) {
-      setLabelName(`${data.title} 裏ラベル`);
+      setLabelName(`${data.productTitle} 裏ラベル`);
     }
     handleObjectModified();
   };
@@ -673,13 +673,13 @@ export const Editor: React.FC<EditorProps> = ({
       const currentData = extractFoodLabelDataFromCanvas(canvas) || foodModalData;
       const nextData: FoodLabelData = {
         ...currentData,
-        title: product.name || currentData.title,
-        showTitle: true,
+        productTitle: product.name || currentData.productTitle,
+        showProductTitle: true,
         ingredients: product.ingredients || currentData.ingredients,
         volume: product.volume || currentData.volume,
-        expiryValue: product.expiry || currentData.expiryValue,
+        expiry: product.expiry || currentData.expiry,
         storage: product.storage || currentData.storage,
-        manufacturerValue: product.shopName || currentData.manufacturerValue,
+        manufacturer: product.shopName || currentData.manufacturer,
       };
       applyFoodBackLabelToCanvas(canvas, w, h, nextData);
       setFoodModalData(nextData);
