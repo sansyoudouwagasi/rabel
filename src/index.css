@@ -17,6 +17,17 @@ body {
   -webkit-user-select: none;
 }
 
+/* Android (Galaxy / Samsung Keyboard 等) で日本語IME・漢字変換が阻害されないよう入力欄は常にtext選択を許可 */
+input,
+textarea,
+select,
+[contenteditable="true"],
+[data-fabric="textarea"] {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  touch-action: auto;
+}
+
 /* 編集用Canvas領域のタッチ最適化 */
 .canvas-wrapper {
   touch-action: none;

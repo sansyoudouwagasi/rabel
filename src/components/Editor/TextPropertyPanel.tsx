@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import * as fabric from 'fabric';
 import {
   Bold,
@@ -22,6 +22,7 @@ import { FontPickerModal } from './FontPickerModal';
 
 interface TextPropertyPanelProps {
   textObject: fabric.IText;
+  focusRequestId?: number;
   onUpdate: () => void;
 }
 
@@ -52,9 +53,12 @@ const QUICK_FONT_IDS = [
 
 export const TextPropertyPanel: React.FC<TextPropertyPanelProps> = ({
   textObject,
+  focusRequestId,
   onUpdate,
 }) => {
   const [isFontModalOpen, setIsFontModalOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isComposingRef = useRef(false);
 
   const isVertical = Boolean((textObject as unknown as { isVertical?: boolean }).isVertical);
 
@@ -62,6 +66,33 @@ export const TextPropertyPanel: React.FC<TextPropertyPanelProps> = ({
   const rawText =
     (textObject as unknown as { rawText?: string }).rawText ??
     (isVertical ? toHorizontalText(textObject.text || '') : textObject.text || '');
+
+  // 別のテキストオブジェクトを選択した際・外部変更時にテキストエリア内容を同期（IME変換中は上書きしない）
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || isComposingRef.current) return;
+    if (el.value !== rawText) {
+      el.value = rawText;
+    }
+  }, [textObject, rawText]);
+
+  // キャンバス上のテキストをダブルタップした際にネイティブ入力欄へフォーカスする（Android/モバイル向け）
+  useEffect(() => {
+    if (!focusRequestId) return;
+    const timer = setTimeout(() => {
+      const el = textareaRef.current;
+      if (el) {
+        el.focus();
+        const len = el.value.length;
+        try {
+          el.setSelectionRange(len, len);
+        } catch {
+          // noop
+        }
+      }
+    }, 30);
+    return () => clearTimeout(timer);
+  }, [focusRequestId]);
 
   const currentFontSize = Math.round(textObject.fontSize || 36);
   const isBold = textObject.fontWeight === 'bold';
@@ -74,36 +105,69 @@ export const TextPropertyPanel: React.FC<TextPropertyPanelProps> = ({
     (f): f is LabelFontPreset => Boolean(f)
   );
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
-    const newRaw = e.target.value;
-    (textObject as unknown as { rawText?: string }).rawText = newRaw;
+  const commitTextToFabric = useCallback(
+    (newRaw: string) => {
+      const prevRaw =
+        (textObject as unknown as { rawText?: string }).rawText ??
+        (isVertical ? toHorizontalText(textObject.text || '') : textObject.text || '');
+      if (newRaw === prevRaw) return;
 
-    if (isVertical) {
-      textObject.set('text', toVerticalText(newRaw));
-    } else {
-      textObject.set('text', newRaw);
+      (textObject as unknown as { rawText?: string }).rawText = newRaw;
+
+      if (isVertical) {
+        textObject.set('text', toVerticalText(newRaw));
+      } else {
+        textObject.set('text', newRaw);
+      }
+      textObject.initDimensions();
+      textObject.setCoords();
+      onUpdate();
+    },
+    [textObject, isVertical, onUpdate]
+  );
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLTextAreaElement>) => {
+    isComposingRef.current = false;
+    commitTextToFabric(e.currentTarget.value);
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nativeEvent = e.nativeEvent as InputEvent;
+    // 日本語IME変換中（未確定のひらがな入力中）はFabric描画やReact親ステート更新を行わず、変換候補の確定を待つ
+    if (isComposingRef.current || nativeEvent?.isComposing) {
+      return;
     }
-    textObject.initDimensions();
-    textObject.setCoords();
-    onUpdate();
+    commitTextToFabric(e.target.value);
+  };
+
+  const handleTextBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
+    if (isComposingRef.current) {
+      isComposingRef.current = false;
+    }
+    commitTextToFabric(e.currentTarget.value);
   };
 
   const handleToggleDirection = (direction: 'horizontal' | 'vertical') => {
     const wantVertical = direction === 'vertical';
     if (wantVertical === isVertical) return;
 
+    const latestRaw = textareaRef.current?.value ?? rawText;
     (textObject as unknown as { isVertical?: boolean }).isVertical = wantVertical;
-    (textObject as unknown as { rawText?: string }).rawText = rawText;
+    (textObject as unknown as { rawText?: string }).rawText = latestRaw;
 
     if (wantVertical) {
       textObject.set({
-        text: toVerticalText(rawText),
+        text: toVerticalText(latestRaw),
         textAlign: 'center',
         lineHeight: 1.05,
       });
     } else {
       textObject.set({
-        text: rawText,
+        text: latestRaw,
         textAlign: 'left',
         lineHeight: 1.16,
       });
@@ -182,11 +246,20 @@ export const TextPropertyPanel: React.FC<TextPropertyPanelProps> = ({
         </div>
 
         <textarea
+          ref={textareaRef}
           rows={isVertical ? 2 : 1}
-          value={rawText}
+          defaultValue={rawText}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           onChange={handleTextChange}
-          className="w-full min-h-[38px] px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 resize-none"
-          placeholder={isVertical ? '縦書き文字を入力 (改行で複数列)' : '文字を入力'}
+          onBlur={handleTextBlur}
+          autoComplete="on"
+          autoCorrect="on"
+          autoCapitalize="none"
+          spellCheck={false}
+          inputMode="text"
+          className="w-full min-h-[40px] px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-base sm:text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 resize-none select-text"
+          placeholder={isVertical ? '縦書き文字を入力 (改行で複数列)' : '文字を入力（漢字変換対応）'}
         />
       </div>
 

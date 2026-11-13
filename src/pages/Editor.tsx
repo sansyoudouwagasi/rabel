@@ -124,11 +124,24 @@ export const Editor: React.FC<EditorProps> = ({
   const [hasUserEdited, setHasUserEdited] = useState<boolean>(Boolean(existingLabel));
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [, setLastSavedAt] = useState<number | null>(existingLabel?.updatedAt || null);
+  const [focusTextPanelSeq, setFocusTextPanelSeq] = useState(0);
 
   // 編集中にラベルの向き（横向き⇔縦向き）を切り替えた際のキャンバス引き継ぎ用Ref
   const pendingOrientationJsonRef = useRef<string | null>(null);
   const pendingFoodDataRef = useRef<FoodLabelData | null>(null);
   const shouldReapplyTemplateRef = useRef<boolean>(false);
+  const isLabelNameComposingRef = useRef<boolean>(false);
+  const labelNameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (
+      labelNameInputRef.current &&
+      !isLabelNameComposingRef.current &&
+      labelNameInputRef.current.value !== labelName
+    ) {
+      labelNameInputRef.current.value = labelName;
+    }
+  }, [labelName]);
 
   const handleDeleteCurrentLabel = async () => {
     if (autoSaveTimer.current) {
@@ -406,6 +419,39 @@ export const Editor: React.FC<EditorProps> = ({
     (canvas: fabric.Canvas) => {
       canvasRef.current = canvas;
       const { width: logicalW, height: logicalH } = getLogicalCanvasSize(canvas);
+
+      // モバイル(Android等)ではFabricの1px非表示textarea経由だとIMEの漢字変換が中断されるため、
+      // キャンバス直接編集ではなくプロパティパネル側の標準<textarea>へフォーカスを誘導する
+      const isTouchOrMobile =
+        typeof window !== 'undefined' &&
+        (window.matchMedia?.('(pointer: coarse)').matches ||
+          /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
+      canvas.on('text:editing:entered', (opt) => {
+        const target = (opt as { target?: fabric.FabricObject }).target;
+        if (!(target instanceof fabric.IText)) return;
+
+        if (isTouchOrMobile) {
+          setTimeout(() => {
+            if (target.isEditing) {
+              target.exitEditing();
+            }
+            canvas.setActiveObject(target);
+            canvas.renderAll();
+            setSelectedObject(target);
+            setFocusTextPanelSeq((n) => n + 1);
+          }, 0);
+        }
+      });
+
+      canvas.on('text:changed', (opt) => {
+        const target = (opt as { target?: fabric.FabricObject }).target;
+        if (!(target instanceof fabric.IText)) return;
+        const ext = target as unknown as { rawText?: string; isVertical?: boolean };
+        if (!ext.isVertical) {
+          ext.rawText = target.text || '';
+        }
+      });
 
       // 食品裏ラベルの向き切り替えに伴う表組み再レイアウト
       if (pendingFoodDataRef.current) {
@@ -777,7 +823,7 @@ export const Editor: React.FC<EditorProps> = ({
     !isImageSelected;
 
   return (
-    <div className="fixed inset-0 h-dvh w-full flex flex-col bg-slate-100 overflow-hidden select-none z-10">
+    <div className="fixed inset-0 h-dvh w-full flex flex-col bg-slate-100 overflow-hidden z-10">
       {/* 非表示の写真アップロードinput */}
       <input
         ref={fileInputRef}
@@ -891,13 +937,31 @@ export const Editor: React.FC<EditorProps> = ({
       {/* ラベル名・ラベルの向き切り替え・サイズ情報バー */}
       <div className="bg-white px-2.5 sm:px-4 py-1.5 border-b border-slate-200 flex items-center justify-between gap-2 text-xs shrink-0 w-full">
         <input
+          ref={labelNameInputRef}
           type="text"
-          value={labelName}
+          defaultValue={labelName}
+          autoComplete="on"
+          autoCorrect="on"
+          autoCapitalize="none"
+          spellCheck={false}
+          onCompositionStart={() => {
+            isLabelNameComposingRef.current = true;
+          }}
+          onCompositionEnd={(e) => {
+            isLabelNameComposingRef.current = false;
+            setLabelName(e.currentTarget.value);
+            triggerAutoSave();
+          }}
           onChange={(e) => {
+            if (isLabelNameComposingRef.current) return;
             setLabelName(e.target.value);
             triggerAutoSave();
           }}
-          className="font-bold text-slate-800 bg-transparent border-none focus:outline-hidden focus:bg-slate-50 px-1.5 py-1 rounded-md min-w-0 flex-1 max-w-[160px] sm:max-w-[220px] text-xs sm:text-sm"
+          onBlur={(e) => {
+            isLabelNameComposingRef.current = false;
+            setLabelName(e.target.value);
+          }}
+          className="font-bold text-slate-800 bg-transparent border-none focus:outline-hidden focus:bg-slate-50 px-1.5 py-1 rounded-md min-w-0 flex-1 max-w-[160px] sm:max-w-[220px] text-xs sm:text-sm select-text"
           placeholder="ラベル名を入力"
         />
 
@@ -1050,6 +1114,7 @@ export const Editor: React.FC<EditorProps> = ({
         {isTextSelected && (
           <TextPropertyPanel
             textObject={selectedObject as fabric.IText}
+            focusRequestId={focusTextPanelSeq}
             onUpdate={() => {
               canvasRef.current?.renderAll();
               handleObjectModified();
