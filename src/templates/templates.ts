@@ -1,5 +1,6 @@
 import * as fabric from 'fabric';
 import { toVerticalText } from '../utils/textDirection';
+import { DEFAULT_FONT_FAMILY } from '../utils/fonts';
 import {
   applyFoodBackLabelToCanvas,
   DEFAULT_FOOD_LABEL_WITH_NUTRITION,
@@ -23,6 +24,7 @@ function createText(
 ): fabric.IText {
   const displayText = isVertical ? toVerticalText(rawText) : rawText;
   const textObj = new fabric.IText(displayText, {
+    fontFamily: DEFAULT_FONT_FAMILY,
     ...options,
     textAlign: isVertical ? 'center' : options.textAlign || 'left',
     lineHeight: isVertical ? 1.05 : options.lineHeight || 1.16,
@@ -162,7 +164,7 @@ export const TEMPLATES: LabelTemplate[] = [
           left: width / 2,
           top: isPortrait ? height * 0.42 : height * 0.35,
           fontSize: Math.round(base * (isPortrait ? 0.14 : 0.16)),
-          fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", serif',
+          fontFamily: '"Shippori Mincho", "Noto Serif JP", serif',
           fontWeight: 'bold',
           fill: '#451a03',
           originX: 'center',
@@ -174,7 +176,7 @@ export const TEMPLATES: LabelTemplate[] = [
         left: width / 2,
         top: isPortrait ? height * 0.82 : height * 0.65,
         fontSize: Math.round(base * 0.17),
-        fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", serif',
+        fontFamily: '"Shippori Mincho", "Noto Serif JP", serif',
         fontWeight: 'bold',
         fill: '#991b1b',
         originX: 'center',
@@ -212,7 +214,7 @@ export const TEMPLATES: LabelTemplate[] = [
           left: width / 2,
           top: isPortrait ? height * 0.42 : height * 0.35,
           fontSize: Math.round(base * 0.17),
-          fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", serif',
+          fontFamily: '"Yuji Syuku", "Noto Serif JP", serif',
           fontWeight: 'bold',
           fill: '#f8fafc',
           originX: 'center',
@@ -308,7 +310,7 @@ export const TEMPLATES: LabelTemplate[] = [
         left: sealX,
         top: sealY,
         fontSize: Math.round(base * 0.15),
-        fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", serif',
+        fontFamily: '"Yuji Syuku", "Noto Serif JP", serif',
         fill: '#ffffff',
         fontWeight: 'bold',
         originX: 'center',
@@ -318,7 +320,7 @@ export const TEMPLATES: LabelTemplate[] = [
         left: isPortrait ? width / 2 : width * 0.58,
         top: isPortrait ? height * 0.52 : height * 0.35,
         fontSize: Math.round(base * 0.13),
-        fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", serif',
+        fontFamily: '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif',
         fill: '#1f2937',
         fontWeight: 'bold',
         originX: 'center',
@@ -328,7 +330,7 @@ export const TEMPLATES: LabelTemplate[] = [
         left: width / 2,
         top: isPortrait ? height * 0.78 : height * 0.72,
         fontSize: Math.round(base * 0.14),
-        fontFamily: '"Yu Mincho", "Hiragino Mincho ProN", serif',
+        fontFamily: '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif',
         fill: '#4b5563',
         fontWeight: 'bold',
         originX: 'center',

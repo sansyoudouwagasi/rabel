@@ -56,7 +56,7 @@ export interface FoodCanvasObjectProps {
   rawText?: string;
 }
 
-const FOOD_FONT_FAMILY = '"Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif';
+const FOOD_FONT_FAMILY = '"Noto Sans JP", "Yu Gothic", "Hiragino Sans", "Meiryo", sans-serif';
 
 let measureCtx: CanvasRenderingContext2D | null = null;
 function getMeasureContext(): CanvasRenderingContext2D | null {

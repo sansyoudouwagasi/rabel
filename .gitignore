@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local proprietary fonts (do not commit to public repository)
+src/Fonts/

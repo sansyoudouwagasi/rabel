@@ -52,6 +52,7 @@ import {
 
 import { TEMPLATES } from '../templates/templates';
 import { toVerticalText } from '../utils/textDirection';
+import { DEFAULT_FONT_FAMILY, refreshCanvasFonts } from '../utils/fonts';
 
 const CUSTOM_CANVAS_PROPS = [
   'isVertical',
@@ -375,6 +376,7 @@ export const Editor: React.FC<EditorProps> = ({
     historyIndex.current--;
     const prevJson = historyStack.current[historyIndex.current];
     await canvas.loadFromJSON(JSON.parse(prevJson));
+    await refreshCanvasFonts(canvas);
     canvas.renderAll();
     setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
     isHistoryProcessing.current = false;
@@ -391,6 +393,7 @@ export const Editor: React.FC<EditorProps> = ({
     historyIndex.current++;
     const nextJson = historyStack.current[historyIndex.current];
     await canvas.loadFromJSON(JSON.parse(nextJson));
+    await refreshCanvasFonts(canvas);
     canvas.renderAll();
     setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
     isHistoryProcessing.current = false;
@@ -410,6 +413,7 @@ export const Editor: React.FC<EditorProps> = ({
         pendingFoodDataRef.current = null;
         applyFoodBackLabelToCanvas(canvas, logicalW, logicalH, foodData);
         setIsFoodLabelActive(true);
+        refreshCanvasFonts(canvas);
         historyStack.current = [];
         historyIndex.current = -1;
         pushHistory();
@@ -423,7 +427,8 @@ export const Editor: React.FC<EditorProps> = ({
         pendingOrientationJsonRef.current = null;
         canvas
           .loadFromJSON(JSON.parse(jsonStr))
-          .then(() => {
+          .then(async () => {
+            await refreshCanvasFonts(canvas);
             canvas.renderAll();
             setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
             historyStack.current = [];
@@ -439,7 +444,8 @@ export const Editor: React.FC<EditorProps> = ({
 
       if (existingLabel && existingLabel.canvasJson && !shouldReapplyTemplateRef.current) {
         try {
-          canvas.loadFromJSON(JSON.parse(existingLabel.canvasJson)).then(() => {
+          canvas.loadFromJSON(JSON.parse(existingLabel.canvasJson)).then(async () => {
+            await refreshCanvasFonts(canvas);
             canvas.renderAll();
             setIsFoodLabelActive(hasFoodBackLabelOnCanvas(canvas));
             pushHistory();
@@ -453,6 +459,7 @@ export const Editor: React.FC<EditorProps> = ({
         selectedTemplate.apply(canvas, logicalW, logicalH);
         canvas.renderAll();
         setIsFoodLabelActive(Boolean(selectedTemplate.isFoodBackLabel));
+        refreshCanvasFonts(canvas);
         historyStack.current = [];
         historyIndex.current = -1;
         pushHistory();
@@ -464,6 +471,7 @@ export const Editor: React.FC<EditorProps> = ({
           left: logicalW / 2,
           top: logicalH / 2,
           fontSize: Math.round(base * 0.14) || 36,
+          fontFamily: DEFAULT_FONT_FAMILY,
           fill: '#1e293b',
           originX: 'center',
           originY: 'center',
@@ -473,6 +481,7 @@ export const Editor: React.FC<EditorProps> = ({
         canvas.add(text);
         canvas.setActiveObject(text);
         canvas.renderAll();
+        refreshCanvasFonts(canvas);
         historyStack.current = [];
         historyIndex.current = -1;
         pushHistory();
@@ -496,6 +505,7 @@ export const Editor: React.FC<EditorProps> = ({
       left: width / 2,
       top: height / 2,
       fontSize: Math.round(base * 0.14) || 36,
+      fontFamily: DEFAULT_FONT_FAMILY,
       fill: '#1e293b',
       originX: 'center',
       originY: 'center',
